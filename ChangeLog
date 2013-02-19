@@ -1,3 +1,9 @@
+SimGrid (3.9.1) NOT RELEASED; urgency=low
+
+ * Various fixes, mainly in smpi, to make it build under Windows.
+
+-- $date Da SimGrid team <simgrid-devel@lists.gforge.inria.fr>
+
 SimGrid (3.9) stable; urgency=low
 
  The Grasgory release: GRAS is really dead now.
