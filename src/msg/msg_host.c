@@ -38,8 +38,8 @@ msg_host_t __MSG_host_create(smx_host_t workstation)
   int i;
   char alias[MAX_ALIAS_NAME + 1] = { 0 };       /* buffer used to build the key of the mailbox */
 
-  if (msg_global->max_channel > 0)
-    host->mailboxes = xbt_new0(msg_mailbox_t, msg_global->max_channel);
+  host->mailboxes = (msg_global->max_channel > 0) ?
+    xbt_new0(msg_mailbox_t, msg_global->max_channel) : NULL;
 
   for (i = 0; i < msg_global->max_channel; i++) {
     sprintf(alias, "%s:%d", name, i);
@@ -120,8 +120,7 @@ msg_host_t MSG_host_self(void)
 void __MSG_host_destroy(msg_host_priv_t host) {
 
 #ifdef MSG_USE_DEPRECATED
-  if (msg_global->max_channel > 0)
-    free(host->mailboxes);
+  free(host->mailboxes);
 #endif
   if (xbt_swag_size(host->vms) > 0 ) {
     XBT_VERB("Host shut down, but it still hosts %d VMs. They will be leaked.",xbt_swag_size(host->vms));
