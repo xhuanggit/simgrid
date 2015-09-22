@@ -71,7 +71,11 @@ void MC_region_destroy(mc_mem_region_t reg)
   if (!reg)
     return;
 
-  //munmap(reg->data, reg->size);
+#ifdef __linux__
+  if (_sg_mc_ksm)
+    munmap(reg->data, reg->size);
+  else
+#endif
   xbt_free(reg->data);
   if (reg->page_numbers) {
     mc_free_page_snapshot_region(reg->page_numbers, mc_page_count(reg->size));
@@ -113,8 +117,17 @@ static mc_mem_region_t mc_region_new_dense(int type, void *start_addr, void* per
   new_reg->data = NULL;
   new_reg->size = size;
   new_reg->page_numbers = NULL;
+#ifdef __linux__
+  if (_sg_mc_ksm)
+    new_reg->data = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+  else
+#endif
   new_reg->data = xbt_malloc(size);
   memcpy(new_reg->data, permanent_addr, size);
+#ifdef __linux__
+  if (_sg_mc_ksm)
+    madvise(new_reg->data, size, MADV_MERGEABLE);
+#endif
   XBT_DEBUG("New region : type : %d, data : %p (real addr %p), size : %zu",
             type, new_reg->data, permanent_addr, size);
   return new_reg;

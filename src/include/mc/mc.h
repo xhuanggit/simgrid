@@ -40,6 +40,9 @@ extern int _sg_do_model_check;
 extern int _sg_mc_checkpoint;
 extern int _sg_mc_sparse_checkpoint;
 extern int _sg_mc_soft_dirty;
+#ifdef __linux__
+extern int _sg_mc_ksm;
+#endif
 extern char* _sg_mc_property_file;
 extern int _sg_mc_timeout;
 extern int _sg_mc_hash;
@@ -61,6 +64,9 @@ void _mc_cfg_cb_reduce(const char *name, int pos);
 void _mc_cfg_cb_checkpoint(const char *name, int pos);
 void _mc_cfg_cb_sparse_checkpoint(const char *name, int pos);
 void _mc_cfg_cb_soft_dirty(const char *name, int pos);
+#ifdef __linux__
+void _mc_cfg_cb_ksm(const char *name, int pos);
+#endif
 void _mc_cfg_cb_property(const char *name, int pos);
 void _mc_cfg_cb_timeout(const char *name, int pos);
 void _mc_cfg_cb_hash(const char *name, int pos);

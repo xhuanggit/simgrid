@@ -25,6 +25,9 @@ int _sg_do_model_check = 0;
 int _sg_mc_checkpoint = 0;
 int _sg_mc_sparse_checkpoint = 0;
 int _sg_mc_soft_dirty = 0;
+#ifdef __linux__
+int _sg_mc_ksm = 0;
+#endif
 char *_sg_mc_property_file = NULL;
 int _sg_mc_timeout = 0;
 int _sg_mc_hash = 0;
@@ -76,6 +79,15 @@ void _mc_cfg_cb_soft_dirty(const char *name, int pos) {
   }
   _sg_mc_soft_dirty = xbt_cfg_get_boolean(_sg_cfg_set, name);
 }
+
+#ifdef __linux__
+void _mc_cfg_cb_ksm(const char *name, int pos)
+{
+  if (_sg_cfg_init_status && !_sg_do_model_check)
+    xbt_die("You are specifying a KSM value after the initialization (through MSG_config?), but model-checking was not activated at config time (through --cfg=model-check:1). This won't work, sorry.");
+  _sg_mc_ksm = xbt_cfg_get_boolean(_sg_cfg_set, name);
+}
+#endif
 
 void _mc_cfg_cb_property(const char *name, int pos)
 {
