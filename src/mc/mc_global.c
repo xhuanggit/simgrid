@@ -726,7 +726,6 @@ void MC_dump_stack_liveness(xbt_fifo_t stack)
 
 }
 
-
 void MC_print_statistics(mc_stats_t stats)
 {
   xbt_mheap_t previous_heap = mmalloc_get_current_heap();
@@ -752,6 +751,9 @@ void MC_print_statistics(mc_stats_t stats)
       XBT_INFO("Send-deterministic : %s",
                !initial_global_state->send_deterministic ? "No" : "Yes");
   }
+  const char* command = getenv("SIMGRID_MC_STATISTICS_COMMAND");
+  if (command)
+    system(command);
   mmalloc_set_current_heap(previous_heap);
 }
 
