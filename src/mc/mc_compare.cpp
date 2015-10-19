@@ -392,6 +392,7 @@ static int compare_local_variables(int process_index,
 
 int snapshot_compare(void *state1, void *state2)
 {
+  xbt_die("Disabled");
   simgrid::mc::Process* process = &mc_model_checker->process();
 
   mc_snapshot_t s1, s2;

@@ -124,12 +124,15 @@ void MC_modelcheck_safety(void)
       /* Create the new expanded state */
       next_state = MC_state_new();
 
+/*
       if(_sg_mc_termination && is_exploration_stack_state(next_state)){
           MC_show_non_termination();
           exit(SIMGRID_EXIT_NON_TERMINATION);
       }
+*/
 
-      if ((visited_state = is_visited_state(next_state)) == NULL) {
+      if (1) {
+      // if ((visited_state = is_visited_state(next_state)) == NULL) {
 
         /* Get an enabled process and insert it in the interleave set of the next state */
         smx_process_t process = NULL;
