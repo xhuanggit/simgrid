@@ -224,7 +224,7 @@ void simgrid::kernel::Future<T>::then_(F continuation)
 ~~~
 
 The `.get()` delegates to the shared state. As we mentioned previously, an
-error is raised if future is not ready:
+error is raised if the future is not ready:
 
 ~~~cpp
 template<class T>
@@ -257,8 +257,8 @@ T simgrid::kernel::SharedState<T>::get()
 
 ### Motivation
 
-Simcalls are not so easy to understand and adding a new one is not so easy.
-In order to add one simcall, one has to first
+Simcalls are not so easy to understand and adding a new one is not so easy
+either. In order to add one simcall, one has to first
 add it to the [list of simcalls](https://github.com/simgrid/simgrid/blob/4ae2fd01d8cc55bf83654e29f294335e3cb1f022/src/simix/simcalls.in)
 which looks like this:
 
@@ -323,7 +323,8 @@ union u_smx_scalar {
 };
 ~~~
 
-This file is read by a [Python script](https://github.com/simgrid/simgrid/blob/4ae2fd01d8cc55bf83654e29f294335e3cb1f022/src/simix/simcalls.py)
+Then one has to call (manually:cry:) a
+[Python script](https://github.com/simgrid/simgrid/blob/4ae2fd01d8cc55bf83654e29f294335e3cb1f022/src/simix/simcalls.py)
 which generates a bunch of C++ files:
 
 * an enum of all the [simcall numbers](https://github.com/simgrid/simgrid/blob/4ae2fd01d8cc55bf83654e29f294335e3cb1f022/src/simix/popping_enum.h#L19);
@@ -338,9 +339,12 @@ which generates a bunch of C++ files:
 * a simulation-kernel-side [big switch](https://github.com/simgrid/simgrid/blob/4ae2fd01d8cc55bf83654e29f294335e3cb1f022/src/simix/popping_generated.cpp#L106)
   handling all the simcall numbers.
 
+Then one has to write the code of the kernel side handler for the simcall
+and the code of the simcall itself (which calls the code-generated
+marshaling/unmarshaling stuff):sob:.
 
-In order to simplify simulation kernel/actor synchronisations, we added two
-generic simcalls which can be used to execute a function in the simulation kernel:
+In order to simplify this process, we added two generic simcalls which can be
+used to execute a function in the simulation kernel:
 
 ~~~cpp
 # This one should really be called run_immediate:
@@ -734,7 +738,7 @@ void Mutex::lock()
 
 Using the same API as `std::mutex` (`Lockable`) means we can use existing
 C++-standard code such as `std::unique_lock<Mutex>` or
-`std::lock_guard<Mutex>` for exception-safe mutex handling:
+`std::lock_guard<Mutex>` for exception-safe mutex handling[^lock]:
 
 ~~~cpp
 {
@@ -1127,3 +1131,13 @@ auto makeTask(F code, Args... args)
     continuations chains :cold_sweat:. The continuations are all called in a
     nice and predictable place in the simulator with a nice and predictable
     state :relieved:.
+
+[^lock]:
+
+    `std::lock()` might kinda work too but it may not be such as good idea to
+    use it as it may use a [<q>deadlock avoidance algorithm such as
+    try-and-back-off</q>](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2014/n4296.pdf#page=1199).
+    A backoff would probably uselessly wait in real time instead of simulated
+    time. The deadlock avoidance algorithm might as well add non-determinism
+    in the simulation which we would like to avoid.
+    `std::try_lock()` should be safe to use though.
