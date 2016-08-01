@@ -22,10 +22,10 @@ but determines the date of the next event (such as the end of a communication,
 the end of a computation) and jumps to this date.
 
 A number of actors executing user-provided code run on top of the
-simulator kernel[^kernel]. When an actor needs to interact with the simulator
+simulation kernel[^kernel]. When an actor needs to interact with the simulation
 kernel (eg. to start a communication), it issues a <i>simcall</i>
-(simulation call, an analogy to system calls) to the simulator kernel.
-This freezes the actor until it is woken up by the simulator kernel
+(simulation call, an analogy to system calls) to the simulation kernel.
+This freezes the actor until it is woken up by the simulation kernel
 (eg. when the communication is finished).
 
 The key ideas here are:
@@ -33,7 +33,7 @@ The key ideas here are:
  * The simulator is a discrete event simulator (event-driven).
 
  * An actor can issue a blocking simcall and will be suspended until
-   it is woken up by the simulator kernel (when the operation is
+   it is woken up by the simulation kernel (when the operation is
    completed).
 
  * In order to move forward in (simulated) time, the simulation kernel
@@ -677,7 +677,7 @@ some time.  These mutexes are different from the standard
 system-level mutex (`std::mutex`, `pthread_mutex_t`, etc.) because
 they work at simulation-level.  Locking on a simulation mutex does
 not block the thread directly but makes a simcall
-(`simcall_mutex_lock()`) which asks the simulator kernel to wake the calling
+(`simcall_mutex_lock()`) which asks the simulation kernel to wake the calling
 actor when it can get ownership of the mutex. Blocking directly at the
 OS level would deadlock the simulation.
 
@@ -886,13 +886,13 @@ bool ConditionVariable::wait_for(std::unique_lock<Mutex>& lock,
 We wrote two future implementations based on the `std::future` API:
 
 * the first one is a non-blocking event-based (`future.then(stuff)`)
-  future used inside our (non-blocking event-based) simulator kernel;
+  future used inside our (non-blocking event-based) simulation kernel;
 
 * the second one is a wait-based (`future.get()`) future used in the actors
   which waits using a simcall.
 
 These futures are used to implement `kernelSync()` and `kernelAsync()` which
-expose asynchronous operations in the simulator kernel to the actors.
+expose asynchronous operations in the simulation kernel to the actors.
 
 In addition, we wrote variations of some other C++ standard library
 classes (`SimulationClock`, `Mutex`, `ConditionVariable`) which work in
