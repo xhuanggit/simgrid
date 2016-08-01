@@ -237,13 +237,14 @@ T simgrid::kernel::Future::get()
 }
 
 template<class T>
-T simgrid::kernel::SharedState<T>::get()
+T simgrid::kernel::FutureState<T>::get()
 {
   if (status_ != FutureStatus::ready)
     xbt_die("Deadlock: this future is not ready");
   status_ = FutureStatus::done;
   if (exception_) {
     std::exception_ptr exception = std::move(exception_);
+    exception_ = nullptr;
     std::rethrow_exception(std::move(exception));
   }
   xbt_assert(this->value_);
