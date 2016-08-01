@@ -105,7 +105,7 @@ Our future are based on this with a few differences[^promise_differences]:
    raised instead.
 
  * We always call the continuations in the simulation loop (and not
-   inside the `future.then()` or `promise.set_value()` calls).
+   inside the `future.then()` or `promise.set_value()` calls)[^then_in_loop].
 
 ### Implementing `Future`
 
@@ -1093,7 +1093,6 @@ auto makeTask(F code, Args... args)
     the same kind of never-blocking asynchronous model as our discrete event
     simulator.
 
-
 [^sharedfuture]:
 
     Currently, we did not implement some features such as shared
@@ -1119,3 +1118,12 @@ auto makeTask(F code, Args... args)
     producer</em> of the result. The consumer calls `promise.set_value(42)`
     or `promise.set_exception(e)` in order to <em>set the result</em> which will
     be made available to the consumer by `future.get()`.
+
+[^then_in_loop]:
+
+    Calling the continuations from simulation loop means that we don't have
+    to fear problems like invariants not being restored when the callbacks
+    are called :fearful: or stack overflows triggered by deeply nested
+    continuations chains :cold_sweat:. The continuations are all called in a
+    nice and predictable place in the simulator with a nice and predictable
+    state :relieved:.
