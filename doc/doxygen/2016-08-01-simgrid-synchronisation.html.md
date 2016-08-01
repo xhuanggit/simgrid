@@ -60,24 +60,24 @@ The key ideas here are:
 ### What is a future?
 
 We need a generic way to represent asynchronous operations in the
-simulation kernel.  Promises are a nice abstraction for this which
-have been added to a lot languages (Java, Python, C++ since C++11,
-ECMAScript, etc.).
+simulation kernel. [Futures](https://en.wikipedia.org/wiki/Futures_and_promises)
+are a nice abstraction for this which have been added to a lot languages
+(Java, Python, C++ since C++11, ECMAScript, etc.).
 
-A [future](https://en.wikipedia.org/wiki/Futures_and_promises)
-represents the result of an asynchronous operation. As the operation
-may not be completed yet, its result is not available yet. Two
-different sort of APIs may be available to expose this value:
+A future represents the result of an asynchronous operation. As the operation
+may not be completed yet, its result is not available yet. Two different sort
+of APIs may be available to expose this future result:
 
- * a <b>blocking API</b> where we wait for the value to be available (`res = f.get()`);
+ * a <b>blocking API</b> where we wait for the result to be available
+   (`res = f.get()`);
 
  * a <b>continuation-based API</b>[^then] where we say what should be
-   done when the operation completes
+   done with the result when the operation completes
    (`future.then(something_to_do_with_the_result)`).
 
-C++11 include the blocking API. The [continuation-based
-API](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/p0159r0.html#futures.unique_future.6)
-is not available in the standard yet but is described in the
+C++11 includes a generic class (`std::future<T>`) which implements a blocking API.
+The [continuation-based API](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/p0159r0.html#futures.unique_future.6)
+is not available in the standard (yet) but is described in the
 [Concurrency Technical
 Specification](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/p0159r0.html).
 
@@ -86,21 +86,23 @@ Specification](http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/p0159r0.h
 We might want to use a solution based on `std::future` but our need is slightly
 different from the C++11 futures. C++11 futures are not suitable for usage inside
 the simulation kernel because they are only providing a blocking API
-(`future.get()`) and the simulation kernel cannot block. Instead, we need a
-continuation-based API to be used in our event-driven simulation kernel.
+(`future.get()`) whereas the simulation kernel <em>cannot</em> block.
+Instead, we need a continuation-based API to be used in our event-driven
+simulation kernel.
 
-The C++ Concurrency TS which describes a continuation-based API.
-Our future are based on this with a few differences:
+The C++ Concurrency TS describes a continuation-based API.
+Our future are based on this with a few differences[^promise_differences]:
 
  * The simulation kernel is single-threaded so we do not need thread
-   synchronisation in the future code.
+   synchronisation for out futures.
 
  * As the simulation kernel cannot block, `f.wait()` and its variants are not
    meaningful in this context.
 
  * Similarly, `future.get()` does an implicit wait. Calling this method in the
    simulation kernel only makes sense if the future is already ready. If the
-   future is not ready this would deadlock the simulator and raises an error.
+   future is not ready, this would deadlock the simulator and an error is
+   raised instead.
 
  * We always call the continuations in the simulation loop (and not
    inside the `future.then()` or `promise.set_value()` calls).
@@ -108,7 +110,7 @@ Our future are based on this with a few differences:
 ### Implementing `Future`
 
 The implementation of future is in `simgrid::kernel::Future` and
-`simgrid::kernel::Promise` and is based on the Concurrency
+`simgrid::kernel::Promise`[^promise] and is based on the Concurrency
 TS[^sharedfuture]:
 
 The future and the associated promise use a shared state defined with:
@@ -1099,8 +1101,21 @@ auto makeTask(F code, Args... args)
 
 [^getcompared]:
 
-    You might want to compare this method with the version of
-    `simgrid::kernel::Future` we showed previously: the kernel future version
-    does not block and raises an error if the future is not ready;
-    the actor future version blocks after having set a continuation to wake the
-    actor when the future is ready.
+    You might want to compare this method with `simgrid::kernel::Future::get()`
+    we showed previously: the method of the kernel future does not block and
+    raises an error if the future is not ready; the method of the actor future
+    blocks after having set a continuation to wake the actor when the future
+    is ready.
+
+[^promise_differences]:
+
+    (which are related to the fact that we are in a non-blocking single-threaded
+    simulation engine)
+
+[^promise]:
+
+    In the C++ standard library, `std::future<T>` is used <em>by the consumer</em>
+    of the result. On the other hand, `std::promise<T>` is used <em>by the
+    producer</em> of the result. The consumer calls `promise.set_value(42)`
+    or `promise.set_exception(e)` in order to <em>set the result</em> which will
+    be made available to the consumer by `future.get()`.
