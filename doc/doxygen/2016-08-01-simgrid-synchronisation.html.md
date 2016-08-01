@@ -177,7 +177,7 @@ The crux of `future.then()` is:
 ~~~cpp
 template<class T>
 template<class F>
-auto Future<T>::thenNoUnwrap(F continuation)
+auto simgrid::kernel::Future<T>::thenNoUnwrap(F continuation)
 -> Future<decltype(continuation(std::move(*this)))>
 {
   typedef decltype(continuation(std::move(*this))) R;
@@ -210,7 +210,7 @@ create a new future:
 ~~~cpp
 template<class T>
 template<class F>
-void Future<T>::then_(F continuation)
+void simgrid::kernel::Future<T>::then_(F continuation)
 {
   if (state_ == nullptr)
     throw std::future_error(std::future_errc::no_state);
@@ -473,7 +473,7 @@ The `future.get()` method is implemented as:
 
 ~~~cpp
 template<class T>
-T Future<T>::get()
+T simgrid::simix::Future<T>::get()
 {
   if (!valid())
     throw std::future_error(std::future_errc::no_state);
