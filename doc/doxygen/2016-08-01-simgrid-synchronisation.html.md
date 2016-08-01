@@ -1008,7 +1008,7 @@ void setPromise(P& promise, F&& future)
 `std::package_task<R(F...)>` but does not wrap the result in a `std::future<R>`
 (it is not <i>packaged</i>).
 
-|               |`std::future`   |`std::packaged_task`|`simgrid::xbt::Task`
+|               |`std::function` |`std::packaged_task`|`simgrid::xbt::Task`
 |---------------|----------------|--------------------|--------------------------
 |Copyable       | Yes            | No                 | No
 |Movable        | Yes            | Yes                | Yes
