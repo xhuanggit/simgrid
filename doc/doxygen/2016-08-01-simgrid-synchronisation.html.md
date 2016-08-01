@@ -221,6 +221,36 @@ void simgrid::kernel::Future<T>::then_(F continuation)
 }
 ~~~
 
+The `.get()` delegates to the shared state. As we mentioned previously, an
+error is raised if future is not ready:
+
+~~~cpp
+template<class T>
+T simgrid::kernel::Future::get()
+{
+  if (state_ == nullptr)
+    throw std::future_error(std::future_errc::no_state);
+  std::shared_ptr<FutureState<T>> state = std::move(state_);
+  return state->get();
+}
+
+template<class T>
+T simgrid::kernel::SharedState<T>::get()
+{
+  if (status_ != FutureStatus::ready)
+    xbt_die("Deadlock: this future is not ready");
+  status_ = FutureStatus::done;
+  if (exception_) {
+    std::exception_ptr exception = std::move(exception_);
+    std::rethrow_exception(std::move(exception));
+  }
+  xbt_assert(this->value_);
+  auto result = std::move(this->value_.get());
+  this->value_ = boost::optional<T>();
+  return std::move(result);
+}
+~~~
+
 ## Generic simcalls
 
 ### Motivation
@@ -469,7 +499,7 @@ private:
 };
 ~~~
 
-The `future.get()` method is implemented as:
+The `future.get()` method is implemented as[^getcompared]:
 
 ~~~cpp
 template<class T>
@@ -1066,3 +1096,11 @@ auto makeTask(F code, Args... args)
 
     Currently, we did not implement some features such as shared
     futures.
+
+[^getcompared]:
+
+    You might want to compare this method with the version of
+    `simgrid::kernel::Future` we showed previously: the kernel future version
+    does not block and raises an error if the future is not ready;
+    the actor future version blocks after having set a continuation to wake the
+    actor when the future is ready.
