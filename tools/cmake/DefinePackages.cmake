@@ -574,6 +574,8 @@ set(MC_SRC
   src/mc/checker/SafetyChecker.hpp
   src/mc/checker/LivenessChecker.cpp
   src/mc/checker/LivenessChecker.hpp
+  src/mc/checker/UnfoldingChecker.cpp
+  src/mc/checker/UnfoldingChecker.hpp
   src/mc/remote/Channel.cpp
   src/mc/remote/Channel.hpp
   src/mc/remote/Client.cpp
