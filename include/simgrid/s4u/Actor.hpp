@@ -135,19 +135,11 @@ XBT_PUBLIC_CLASS Actor : public simgrid::xbt::Extendable<Actor>
   friend simgrid::kernel::activity::MailboxImpl;
   simix::ActorImpl* pimpl_ = nullptr;
 
-  /** Wrap a (possibly non-copyable) single-use task into a `std::function` */
-  template<class F, class... Args>
-  static std::function<void()> wrap_task(F f, Args... args)
-  {
-    typedef decltype(f(std::move(args)...)) R;
-    auto task = std::make_shared<simgrid::xbt::Task<R()>>(
-      simgrid::xbt::makeTask(std::move(f), std::move(args)...));
-    return [task] { (*task)(); };
-  }
-
   explicit Actor(smx_actor_t pimpl) : pimpl_(pimpl) {}
 
 public:
+
+  typedef std::function<void()> callback_type;
 
   // ***** No copy *****
   Actor(Actor const&) = delete;
@@ -165,29 +157,19 @@ public:
    *
    *  If the actor is restarted, the actor has a fresh copy of the function.
    */
-  static ActorPtr createActor(const char* name, s4u::Host* host, std::function<void()> code);
+  static ActorPtr createActor(const char* name, s4u::Host* host, callback_type code);
 
-  static ActorPtr createActor(const char* name, s4u::Host* host, std::function<void(std::vector<std::string>*)> code,
-                              std::vector<std::string>* args)
+  template<class F>
+  static ActorPtr createActor(const char* name, s4u::Host *host, F code)
   {
-    return createActor(name, host, [code](std::vector<std::string>* args) { code(args); }, args);
+    return createActor(name, host, callback_type(std::move(code)));
   }
 
-  /** Create an actor using code
-   *
-   *  Using this constructor, move-only type can be used. The consequence is
-   *  that we cannot copy the value and restart the actor in its initial
-   *  state. In order to use auto-restart, an explicit `function` must be passed
-   *  instead.
-   */
-  template<class F, class... Args,
-    // This constructor is enabled only if the call code(args...) is valid:
-    typename = typename std::result_of<F(Args...)>::type
-    >
+  template<class F, class... Args>
   static ActorPtr createActor(const char* name, s4u::Host *host, F code, Args... args)
   {
-    return createActor(name, host, wrap_task(std::move(code), std::move(args)...));
-  }
+    return createActor(name, host, std::bind(std::move(code), std::move(args)...));
+   }
 
   // Create actor from function name:
 
@@ -217,9 +199,9 @@ public:
 
   /** Resume a suspended actor by resuming the task on which it was waiting for the completion. */
   void resume();
-  
+
   void yield();
-  
+
   /** Returns true if the actor is suspended. */
   int isSuspended();
 
