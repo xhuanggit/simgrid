@@ -1018,3 +1018,6 @@ simgrid.creator
 simgrid.includes
 .vscode/c_cpp_properties.json
 .vscode/settings.json
+cscope.in.out
+cscope.out
+cscope.po.out
