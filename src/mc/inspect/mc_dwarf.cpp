@@ -13,7 +13,7 @@
 #include "src/mc/inspect/Variable.hpp"
 #include "src/mc/inspect/mc_dwarf.hpp"
 #include "src/mc/mc_private.hpp"
-#include "src/mc/remote/RemoteSimulation.hpp"
+#include "src/mc/remote/RemoteProcess.hpp"
 
 #include <algorithm>
 #include <array>
@@ -994,9 +994,7 @@ static void MC_load_dwarf(simgrid::mc::ObjectInformation* info)
   int fd = open(info->file_name.c_str(), O_RDONLY);
   xbt_assert(fd >= 0, "Could not open file %s", info->file_name.c_str());
   Elf* elf = elf_begin(fd, ELF_C_READ, nullptr);
-  xbt_assert(elf != nullptr, "Not an ELF file");
-  Elf_Kind kind = elf_kind(elf);
-  xbt_assert(kind == ELF_K_ELF, "Not an ELF file");
+  xbt_assert(elf != nullptr && elf_kind(elf) == ELF_K_ELF, "%s is not an ELF file", info->file_name.c_str());
 
   // Remember if this is a `ET_EXEC` (fixed location) or `ET_DYN`:
   Elf64_Half type = get_type(elf);
@@ -1147,24 +1145,32 @@ static void MC_post_process_types(simgrid::mc::ObjectInformation* info)
 namespace simgrid {
 namespace mc {
 
+void ObjectInformation::ensure_dwarf_loaded()
+{
+  if (dwarf_loaded)
+    return;
+  dwarf_loaded = true;
+
+  MC_load_dwarf(this);
+  MC_post_process_variables(this);
+  MC_post_process_types(this);
+  for (auto& entry : this->subprograms)
+    mc_post_process_scope(this, &entry.second);
+  MC_make_functions_index(this);
+}
+
 /** @brief Finds information about a given shared object/executable */
 std::shared_ptr<ObjectInformation> createObjectInformation(std::vector<xbt::VmMap> const& maps, const char* name)
 {
   auto result       = std::make_shared<ObjectInformation>();
   result->file_name = name;
   simgrid::mc::find_object_address(maps, result.get());
-  MC_load_dwarf(result.get());
-  MC_post_process_variables(result.get());
-  MC_post_process_types(result.get());
-  for (auto& entry : result.get()->subprograms)
-    mc_post_process_scope(result.get(), &entry.second);
-  MC_make_functions_index(result.get());
   return result;
 }
 
 /*************************************************************************/
 
-void postProcessObjectInformation(const RemoteSimulation* process, ObjectInformation* info)
+void postProcessObjectInformation(const RemoteProcess* process, ObjectInformation* info)
 {
   for (auto& t : info->types) {
     Type* type    = &(t.second);

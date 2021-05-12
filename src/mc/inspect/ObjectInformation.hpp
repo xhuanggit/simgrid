@@ -48,7 +48,10 @@ struct FunctionIndexEntry {
  *  - etc.
  */
 class ObjectInformation {
+  bool dwarf_loaded = false; // Lazily loads the dwarf info
+
 public:
+  void ensure_dwarf_loaded(); // Used by functions that need the dwarf
   ObjectInformation() = default;
 
   // Not copiable:
@@ -124,12 +127,16 @@ public:
 
   /** Find a function by instruction address
    *
+   *  Loads the dwarf information on need.
+   *
    *  @param ip instruction address
    *  @return corresponding function (if any) or nullptr
    */
-  simgrid::mc::Frame* find_function(const void* ip) const;
+  simgrid::mc::Frame* find_function(const void* ip);
 
   /** Find a global variable by name
+   *
+   *  Loads the dwarf information on need.
    *
    *  This is used to ignore global variables and to find well-known variables
    *  (`__mmalloc_default_mdp`).
@@ -137,7 +144,7 @@ public:
    *  @param name scopes name of the global variable (`myproject::Foo::count`)
    *  @return corresponding variable (if any) or nullptr
    */
-  const simgrid::mc::Variable* find_variable(const char* name) const;
+  const simgrid::mc::Variable* find_variable(const char* name);
 
   /** Remove a global variable (in order to ignore it)
    *
@@ -157,7 +164,7 @@ XBT_PRIVATE std::shared_ptr<ObjectInformation> createObjectInformation(std::vect
                                                                        const char* name);
 
 /** Augment the current module with information about the other ones */
-XBT_PRIVATE void postProcessObjectInformation(const simgrid::mc::RemoteSimulation* process,
+XBT_PRIVATE void postProcessObjectInformation(const simgrid::mc::RemoteProcess* process,
                                               simgrid::mc::ObjectInformation* info);
 } // namespace mc
 } // namespace simgrid

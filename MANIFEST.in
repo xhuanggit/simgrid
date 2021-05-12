@@ -5,9 +5,6 @@ include doc/webcruft/Paje_MSG_screenshot.jpg
 include doc/webcruft/Paje_MSG_screenshot_thn.jpg
 include doc/webcruft/eclipseScreenShot.png
 include doc/webcruft/output.goal.pdf
-include doc/webcruft/simgrid_logo_2011.gif
-include doc/webcruft/simgrid_logo_2011.png
-include doc/webcruft/simgrid_logo_2011_small.png
 include examples/c/actor-create/actor-create.c
 include examples/c/actor-create/actor-create.tesh
 include examples/c/actor-create/actor-create_d.xml
@@ -568,7 +565,7 @@ include examples/smpi/replay/split_traces
 include examples/smpi/replay_multiple/README
 include examples/smpi/replay_multiple/description_file
 include examples/smpi/replay_multiple/generate_multiple_deployment.sh
-include examples/smpi/replay_multiple/replay_multiple.c
+include examples/smpi/replay_multiple/replay_multiple.cpp
 include examples/smpi/replay_multiple/replay_multiple.tesh
 include examples/smpi/replay_multiple/smpi_replay.txt
 include examples/smpi/replay_multiple/ti_traces_32_1/ti_trace0.txt
@@ -654,6 +651,7 @@ include teshsuite/kernel/context-defaults/factory_boost.tesh
 include teshsuite/kernel/context-defaults/factory_raw.tesh
 include teshsuite/kernel/context-defaults/factory_thread.tesh
 include teshsuite/kernel/context-defaults/factory_ucontext.tesh
+include teshsuite/kernel/simcall-generic/blocking_simcall.hpp
 include teshsuite/kernel/simcall-generic/simcall-generic.cpp
 include teshsuite/kernel/simcall-generic/simcall-generic.tesh
 include teshsuite/kernel/stack-overflow/stack-overflow.cpp
@@ -796,6 +794,9 @@ include teshsuite/smpi/coll-allgather/coll-allgather.c
 include teshsuite/smpi/coll-allgather/coll-allgather.tesh
 include teshsuite/smpi/coll-allgatherv/coll-allgatherv.c
 include teshsuite/smpi/coll-allgatherv/coll-allgatherv.tesh
+include teshsuite/smpi/coll-allreduce-with-leaks/coll-allreduce-with-leaks.c
+include teshsuite/smpi/coll-allreduce-with-leaks/coll-allreduce-with-leaks.tesh
+include teshsuite/smpi/coll-allreduce-with-leaks/mc-coll-allreduce-with-leaks.tesh
 include teshsuite/smpi/coll-allreduce/coll-allreduce-automatic.tesh
 include teshsuite/smpi/coll-allreduce/coll-allreduce-large.tesh
 include teshsuite/smpi/coll-allreduce/coll-allreduce-papi.tesh
@@ -1744,8 +1745,6 @@ include MANIFEST.in
 include MANIFEST.in.in
 include NEWS
 include README.md
-include doc/Doxyfile.in
-include doc/Layout.xml
 include doc/doxygen/FAQ.doc
 include doc/doxygen/inside.doc
 include doc/doxygen/inside_cmake.doc
@@ -2007,7 +2006,6 @@ include include/simgrid/semaphore.h
 include include/simgrid/simdag.h
 include include/simgrid/simix.h
 include include/simgrid/simix.hpp
-include include/simgrid/simix/blocking_simcall.hpp
 include include/simgrid/smpi/smpi_replay.hpp
 include include/simgrid/version.h.in
 include include/simgrid/vm.h
@@ -2119,6 +2117,7 @@ include src/include/surf/surf.hpp
 include src/include/xbt/coverage.h
 include src/include/xbt/mmalloc.h
 include src/include/xbt/parmap.hpp
+include src/include/xbt/xbt_modinter.h
 include src/include/xxhash.hpp
 include src/instr/instr_config.cpp
 include src/instr/instr_interface.cpp
@@ -2164,6 +2163,8 @@ include src/kernel/activity/SynchroRaw.cpp
 include src/kernel/activity/SynchroRaw.hpp
 include src/kernel/actor/ActorImpl.cpp
 include src/kernel/actor/ActorImpl.hpp
+include src/kernel/actor/SimcallObserver.cpp
+include src/kernel/actor/SimcallObserver.hpp
 include src/kernel/context/Context.cpp
 include src/kernel/context/Context.hpp
 include src/kernel/context/ContextBoost.cpp
@@ -2185,7 +2186,6 @@ include src/kernel/resource/Action.cpp
 include src/kernel/resource/DiskImpl.cpp
 include src/kernel/resource/DiskImpl.hpp
 include src/kernel/resource/Model.cpp
-include src/kernel/resource/Resource.cpp
 include src/kernel/resource/profile/DatedValue.cpp
 include src/kernel/resource/profile/DatedValue.hpp
 include src/kernel/resource/profile/Event.hpp
@@ -2226,8 +2226,6 @@ include src/mc/checker/LivenessChecker.cpp
 include src/mc/checker/LivenessChecker.hpp
 include src/mc/checker/SafetyChecker.cpp
 include src/mc/checker/SafetyChecker.hpp
-include src/mc/checker/SimcallObserver.cpp
-include src/mc/checker/SimcallObserver.hpp
 include src/mc/checker/UdporChecker.cpp
 include src/mc/checker/UdporChecker.hpp
 include src/mc/checker/simgrid_mc.cpp
@@ -2268,8 +2266,6 @@ include src/mc/mc_private.hpp
 include src/mc/mc_record.cpp
 include src/mc/mc_record.hpp
 include src/mc/mc_replay.hpp
-include src/mc/mc_request.cpp
-include src/mc/mc_request.hpp
 include src/mc/mc_safety.hpp
 include src/mc/mc_smx.cpp
 include src/mc/mc_state.cpp
@@ -2280,9 +2276,9 @@ include src/mc/remote/Channel.cpp
 include src/mc/remote/Channel.hpp
 include src/mc/remote/CheckerSide.cpp
 include src/mc/remote/CheckerSide.hpp
+include src/mc/remote/RemoteProcess.cpp
+include src/mc/remote/RemoteProcess.hpp
 include src/mc/remote/RemotePtr.hpp
-include src/mc/remote/RemoteSimulation.cpp
-include src/mc/remote/RemoteSimulation.hpp
 include src/mc/remote/mc_protocol.h
 include src/mc/sosp/ChunkedData.cpp
 include src/mc/sosp/ChunkedData.hpp
@@ -2640,7 +2636,6 @@ include src/xbt/xbt_replay.cpp
 include src/xbt/xbt_str.cpp
 include src/xbt/xbt_str_test.cpp
 include src/xbt/xbt_virtu.cpp
-include src/xbt_modinter.h
 include teshsuite/java/CMakeLists.txt
 include teshsuite/kernel/CMakeLists.txt
 include teshsuite/lua/CMakeLists.txt

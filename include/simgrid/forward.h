@@ -86,8 +86,8 @@ class File;
 class Semaphore;
 /** Smart pointer to a simgrid::s4u::Semaphore */
 using SemaphorePtr = boost::intrusive_ptr<Semaphore>;
-XBT_PUBLIC void intrusive_ptr_release(Semaphore* m);
-XBT_PUBLIC void intrusive_ptr_add_ref(Semaphore* m);
+XBT_PUBLIC void intrusive_ptr_release(const Semaphore* m);
+XBT_PUBLIC void intrusive_ptr_add_ref(const Semaphore* m);
 
 class Disk;
 } // namespace s4u
@@ -106,6 +106,8 @@ using ActorImplPtr = boost::intrusive_ptr<ActorImpl>;
 using ActorCode = std::function<void()>;
 // Create an ActorCode from the parameters parsed in the XML file (or elsewhere)
 using ActorCodeFactory = std::function<ActorCode(std::vector<std::string> args)>;
+
+class SimcallObserver;
 } // namespace actor
 
 namespace activity {
@@ -116,6 +118,9 @@ namespace activity {
   XBT_PUBLIC void intrusive_ptr_release(ActivityImpl* activity);
 
   class ConditionVariableImpl;
+  using ConditionVariableImplPtr = boost::intrusive_ptr<ConditionVariableImpl>;
+  XBT_PUBLIC void intrusive_ptr_add_ref(ConditionVariableImpl* cond);
+  XBT_PUBLIC void intrusive_ptr_release(ConditionVariableImpl* cond);
 
   class CommImpl;
   using CommImplPtr = boost::intrusive_ptr<CommImpl>;
@@ -125,10 +130,14 @@ namespace activity {
   using IoImplPtr = boost::intrusive_ptr<IoImpl>;
   class MutexImpl;
   using MutexImplPtr = boost::intrusive_ptr<MutexImpl>;
+  XBT_PUBLIC void intrusive_ptr_add_ref(MutexImpl* mutex);
+  XBT_PUBLIC void intrusive_ptr_release(MutexImpl* mutex);
   class RawImpl;
   using RawImplPtr = boost::intrusive_ptr<RawImpl>;
   class SemaphoreImpl;
   using SemaphoreImplPtr = boost::intrusive_ptr<SemaphoreImpl>;
+  XBT_PUBLIC void intrusive_ptr_add_ref(SemaphoreImpl* sem);
+  XBT_PUBLIC void intrusive_ptr_release(SemaphoreImpl* sem);
   class SleepImpl;
   using SleepImplPtr = boost::intrusive_ptr<SleepImpl>;
 
@@ -180,7 +189,6 @@ namespace surf {
 }
 namespace mc {
 class CommunicationDeterminismChecker;
-class SimcallObserver;
 }
 namespace vm {
 class VMModel;

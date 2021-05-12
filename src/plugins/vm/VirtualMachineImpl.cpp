@@ -5,18 +5,33 @@
 
 #include "src/plugins/vm/VirtualMachineImpl.hpp"
 #include "simgrid/Exception.hpp"
+#include "simgrid/kernel/routing/NetZoneImpl.hpp"
+#include "simgrid/s4u/Engine.hpp"
 #include "simgrid/s4u/Exec.hpp"
+#include "simgrid/sg_config.hpp"
 #include "src/include/surf/surf.hpp"
 #include "src/kernel/EngineImpl.hpp"
 #include "src/kernel/activity/ExecImpl.hpp"
+#include "src/surf/cpu_cas01.hpp"
+#include "src/surf/cpu_ti.hpp"
 
 XBT_LOG_NEW_DEFAULT_SUBCATEGORY(res_vm, ker_resource, "Virtual Machines, containing actors and mobile accross hosts");
 
-void surf_vm_model_init_HL13()
+void surf_vm_model_init_HL13(simgrid::kernel::resource::CpuModel* cpu_pm_model)
 {
-  auto vm_model = std::make_shared<simgrid::vm::VMModel>();
-  simgrid::kernel::EngineImpl::get_instance()->add_model(simgrid::kernel::resource::Model::Type::VM,
-                                                         std::move(vm_model), true);
+  auto vm_model = std::make_shared<simgrid::vm::VMModel>("VM_HL13");
+
+  simgrid::kernel::EngineImpl::get_instance()->add_model(vm_model, {cpu_pm_model});
+  std::shared_ptr<simgrid::kernel::resource::CpuModel> cpu_model_vm;
+
+  auto cpu_optim = simgrid::config::get_value<std::string>("cpu/optim");
+  if (cpu_optim == "TI") {
+    cpu_model_vm = std::make_shared<simgrid::kernel::resource::CpuTiModel>("VmCpu_TI");
+  } else {
+    cpu_model_vm = std::make_shared<simgrid::kernel::resource::CpuCas01Model>("VmCpu_Cas01");
+  }
+  simgrid::kernel::EngineImpl::get_instance()->add_model(cpu_model_vm, {cpu_pm_model, vm_model.get()});
+  simgrid::s4u::Engine::get_instance()->get_netzone_root()->get_impl()->set_cpu_vm_model(cpu_model_vm);
 }
 
 namespace simgrid {
@@ -101,7 +116,7 @@ static void remove_active_activity(kernel::activity::ActivityImpl const& act)
   }
 }
 
-VMModel::VMModel()
+VMModel::VMModel(const std::string& name) : HostModel(name)
 {
   s4u::Host::on_state_change.connect(host_state_change);
   s4u::Exec::on_start.connect(add_active_exec);
@@ -150,7 +165,6 @@ double VMModel::next_occurring_event(double now)
     kernel::lmm::System* vcpu_system = cpu->get_model()->get_maxmin_system();
     vcpu_system->update_constraint_bound(cpu->get_constraint(), virt_overhead * solved_value);
   }
-
   /* actual next occurring event is determined by VM CPU model at surf_solve */
   return -1.0;
 }

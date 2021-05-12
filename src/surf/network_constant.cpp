@@ -17,17 +17,14 @@ XBT_LOG_EXTERNAL_DEFAULT_CATEGORY(res_network);
  *********/
 void surf_network_model_init_Constant()
 {
-  auto net_model = std::make_shared<simgrid::kernel::resource::NetworkConstantModel>();
-  simgrid::kernel::EngineImpl::get_instance()->add_model(simgrid::kernel::resource::Model::Type::NETWORK, net_model,
-                                                         true);
+  auto net_model = std::make_shared<simgrid::kernel::resource::NetworkConstantModel>("Network_Constant");
+  simgrid::kernel::EngineImpl::get_instance()->add_model(net_model);
   simgrid::s4u::Engine::get_instance()->get_netzone_root()->get_impl()->set_network_model(net_model);
 }
 
 namespace simgrid {
 namespace kernel {
 namespace resource {
-
-NetworkConstantModel::NetworkConstantModel() : NetworkModel(Model::UpdateAlgo::FULL) {}
 
 LinkImpl* NetworkConstantModel::create_link(const std::string& name, const std::vector<double>& /*bandwidth*/,
                                             s4u::Link::SharingPolicy)

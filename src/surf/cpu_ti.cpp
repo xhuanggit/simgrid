@@ -31,10 +31,10 @@ CpuTiProfile::CpuTiProfile(const profile::Profile* profile)
 {
   double integral    = 0;
   double time        = 0;
-  unsigned nb_points = profile->event_list.size() + 1;
+  unsigned nb_points = profile->get_event_list().size() + 1;
   time_points_.reserve(nb_points);
   integral_.reserve(nb_points);
-  for (auto const& val : profile->event_list) {
+  for (auto const& val : profile->get_event_list()) {
     time_points_.push_back(time);
     integral_.push_back(integral);
     time += val.date_;
@@ -158,8 +158,8 @@ double CpuTiTmgr::solve(double a, double amount) const
   XBT_DEBUG("amount %f total %f", amount, total_);
   /* Reduce the problem to one where amount <= trace_total */
   double quotient       = floor(amount / total_);
-  double reduced_amount = (total_) * ((amount / total_) - floor(amount / total_));
-  double reduced_a      = a - (last_time_) * static_cast<int>(floor(a / last_time_));
+  double reduced_amount = total_ * ((amount / total_) - floor(amount / total_));
+  double reduced_a      = a - last_time_ * static_cast<int>(floor(a / last_time_));
 
   XBT_DEBUG("Quotient: %g reduced_amount: %f reduced_a: %f", quotient, reduced_amount, reduced_a);
 
@@ -207,7 +207,7 @@ double CpuTiTmgr::get_power_scale(double a) const
 {
   double reduced_a                = a - floor(a / last_time_) * last_time_;
   int point                       = CpuTiProfile::binary_search(profile_->time_points_, reduced_a);
-  kernel::profile::DatedValue val = speed_profile_->event_list.at(point);
+  kernel::profile::DatedValue val = speed_profile_->get_event_list().at(point);
   return val.value_;
 }
 
@@ -231,15 +231,15 @@ CpuTiTmgr::CpuTiTmgr(kernel::profile::Profile* speed_profile, double value) : sp
   }
 
   /* only one point available, fixed trace */
-  if (speed_profile->event_list.size() == 1) {
-    value_ = speed_profile->event_list.front().value_;
+  if (speed_profile->get_event_list().size() == 1) {
+    value_ = speed_profile->get_event_list().front().value_;
     return;
   }
 
   type_ = Type::DYNAMIC;
 
   /* count the total time of trace file */
-  for (auto const& val : speed_profile->event_list)
+  for (auto const& val : speed_profile->get_event_list())
     total_time += val.date_;
 
   profile_   = std::make_unique<CpuTiProfile>(speed_profile);
@@ -268,19 +268,12 @@ int CpuTiProfile::binary_search(const std::vector<double>& array, double a)
  * Model *
  *********/
 
-void CpuTiModel::create_pm_vm_models()
+void CpuTiModel::create_pm_models()
 {
-  auto cpu_model_pm = std::make_shared<CpuTiModel>();
-  simgrid::kernel::EngineImpl::get_instance()->add_model(simgrid::kernel::resource::Model::Type::CPU_PM, cpu_model_pm,
-                                                         true);
+  auto cpu_model_pm = std::make_shared<CpuTiModel>("Cpu_TI");
+  simgrid::kernel::EngineImpl::get_instance()->add_model(cpu_model_pm);
   simgrid::s4u::Engine::get_instance()->get_netzone_root()->get_impl()->set_cpu_pm_model(cpu_model_pm);
-  auto cpu_model_vm = std::make_shared<CpuTiModel>();
-  simgrid::kernel::EngineImpl::get_instance()->add_model(simgrid::kernel::resource::Model::Type::CPU_VM, cpu_model_vm,
-                                                         true);
-  simgrid::s4u::Engine::get_instance()->get_netzone_root()->get_impl()->set_cpu_vm_model(cpu_model_vm);
 }
-
-CpuTiModel::CpuTiModel() : CpuModel(Model::UpdateAlgo::FULL) {}
 
 Cpu* CpuTiModel::create_cpu(s4u::Host* host, const std::vector<double>& speed_per_pstate)
 {
@@ -335,19 +328,20 @@ CpuTi::~CpuTi()
   delete speed_integrated_trace_;
 }
 
-void CpuTi::set_speed_profile(kernel::profile::Profile* profile)
+Cpu* CpuTi::set_speed_profile(kernel::profile::Profile* profile)
 {
   delete speed_integrated_trace_;
   speed_integrated_trace_ = new CpuTiTmgr(profile, speed_.scale);
 
   /* add a fake trace event if periodicity == 0 */
-  if (profile && profile->event_list.size() > 1) {
-    kernel::profile::DatedValue val = profile->event_list.back();
+  if (profile && profile->get_event_list().size() > 1) {
+    kernel::profile::DatedValue val = profile->get_event_list().back();
     if (val.date_ < 1e-12) {
       auto* prof   = new kernel::profile::Profile();
       speed_.event = prof->schedule(&profile::future_evt_set, this);
     }
   }
+  return this;
 }
 
 void CpuTi::apply_event(kernel::profile::Event* event, double value)

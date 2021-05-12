@@ -467,9 +467,9 @@ Creating actors
 
    .. group-tab:: C
 
-      .. doxygenfunction:: sg_actor_create(const char *name, sg_host_t host, xbt_main_func_t code, int argc, const char *const *argv)
+      .. doxygenfunction:: sg_actor_create(const char *name, sg_host_t host, xbt_main_func_t code, int argc, char *const *argv)
       .. doxygenfunction:: sg_actor_init(const char *name, sg_host_t host)
-      .. doxygenfunction:: sg_actor_start(sg_actor_t actor, xbt_main_func_t code, int argc, const char *const *argv)
+      .. doxygenfunction:: sg_actor_start(sg_actor_t actor, xbt_main_func_t code, int argc, char *const *argv)
 
       .. doxygenfunction:: sg_actor_attach(const char *name, void *data, sg_host_t host, xbt_dict_t properties)
       .. doxygenfunction:: sg_actor_detach()
@@ -491,7 +491,7 @@ Retrieving actors
 
    .. group-tab:: C
 
-      .. doxygenfunction:: sg_actor_by_PID(aid_t pid)
+      .. doxygenfunction:: sg_actor_by_pid(aid_t pid)
       .. doxygenfunction:: sg_actor_self()
 
 Querying info
@@ -525,8 +525,8 @@ Querying info
    .. group-tab:: C
 
       .. doxygenfunction:: sg_actor_get_name(const_sg_actor_t actor)
-      .. doxygenfunction:: sg_actor_get_PID(const_sg_actor_t actor)
-      .. doxygenfunction:: sg_actor_get_PPID(const_sg_actor_t actor)
+      .. doxygenfunction:: sg_actor_get_pid(const_sg_actor_t actor)
+      .. doxygenfunction:: sg_actor_get_ppid(const_sg_actor_t actor)
       .. doxygenfunction:: sg_actor_get_properties(const_sg_actor_t actor)
       .. doxygenfunction:: sg_actor_get_property_value(const_sg_actor_t actor, const char *name)
 

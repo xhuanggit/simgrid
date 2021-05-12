@@ -1,0 +1,29 @@
+# Smpi Allreduce collectives tests
+! output sort
+
+p Test allreduce
+$ $VALGRIND_NO_LEAK_CHECK ${bindir:=.}/../../../smpi_script/bin/smpirun -map -hostfile ../hostfile_coll -platform  ${platfdir:=.}/small_platform.xml -np 16 --log=xbt_cfg.thres:critical ${bindir:=.}/coll-allreduce-with-leaks --log=smpi_config.thres:warning --cfg=smpi/display-allocs:yes --cfg=smpi/simulate-computation:no --log=smpi_coll.thres:error --log=smpi_mpi.thres:error --log=smpi_pmpi.thres:error
+> [rank 0] -> Tremblay
+> [rank 1] -> Tremblay
+> [rank 2] -> Tremblay
+> [rank 3] -> Tremblay
+> [rank 4] -> Jupiter
+> [rank 5] -> Jupiter
+> [rank 6] -> Jupiter
+> [rank 7] -> Jupiter
+> [rank 8] -> Fafard
+> [rank 9] -> Fafard
+> [rank 10] -> Fafard
+> [rank 11] -> Fafard
+> [rank 12] -> Ginette
+> [rank 13] -> Ginette
+> [rank 14] -> Ginette
+> [rank 15] -> Ginette
+> If this is too much, consider sharing allocations for computation buffers.
+> Largest allocation at once from a single process was 64 bytes, at sysdep.h:87. It was called 32 times during the whole simulation.
+> Running smpirun with -wrapper "valgrind --leak-check=full" can provide more information
+> This can be done automatically by setting --cfg=smpi/auto-shared-malloc-thresh to the minimum size wanted size (this can alter execution if data content is necessary)
+> [0.023768] [smpi_utils/INFO] Probable memory leaks in your code: SMPI detected 31 unfreed MPI handles : display types and addresses (n max) with --cfg=smpi/list-leaks:n.
+> [0.023768] [smpi_utils/INFO] Memory Usage: Simulated application allocated 2048 bytes during its lifetime through malloc/calloc calls.
+
+

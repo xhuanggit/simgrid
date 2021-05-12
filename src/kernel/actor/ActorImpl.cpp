@@ -19,7 +19,6 @@
 #include "src/surf/cpu_interface.hpp"
 
 #include <boost/core/demangle.hpp>
-#include <boost/range/algorithm.hpp>
 #include <utility>
 
 XBT_LOG_NEW_DEFAULT_SUBCATEGORY(simix_process, simix, "Logging specific to SIMIX (process)");
@@ -45,15 +44,19 @@ unsigned long get_maxpid()
 {
   return maxpid;
 }
-ActorImpl* ActorImpl::by_PID(aid_t PID)
+void* get_maxpid_addr()
 {
-  auto item = simix_global->process_list.find(PID);
+  return &maxpid;
+}
+ActorImpl* ActorImpl::by_pid(aid_t pid)
+{
+  auto item = simix_global->process_list.find(pid);
   if (item != simix_global->process_list.end())
     return item->second;
 
   // Search the trash
   for (auto& a : simix_global->actors_to_destroy)
-    if (a.get_pid() == PID)
+    if (a.get_pid() == pid)
       return &a;
   return nullptr; // Not found, even in the trash
 }
@@ -223,10 +226,7 @@ void ActorImpl::exit()
     if (exec != nullptr) {
       exec->clean_action();
     } else if (comm != nullptr) {
-      // Remove first occurrence of &actor->simcall:
-      auto i = boost::range::find(waiting_synchro_->simcalls_, &simcall_);
-      if (i != waiting_synchro_->simcalls_.end())
-        waiting_synchro_->simcalls_.remove(&simcall_);
+      comm->unregister_simcall(&simcall_);
     } else {
       activity::ActivityImplPtr(waiting_synchro_)->finish();
     }
@@ -284,7 +284,7 @@ void ActorImpl::set_kill_time(double kill_time)
 
 double ActorImpl::get_kill_time() const
 {
-  return kill_timer_ ? kill_timer_->get_date() : 0;
+  return kill_timer_ ? kill_timer_->date : 0.0;
 }
 
 void ActorImpl::yield()
@@ -579,9 +579,9 @@ const char* SIMIX_process_self_get_name()
 }
 
 /** @brief Returns the process from PID. */
-smx_actor_t SIMIX_process_from_PID(aid_t PID)
+smx_actor_t SIMIX_process_from_PID(aid_t pid)
 {
-  return simgrid::kernel::actor::ActorImpl::by_PID(PID);
+  return simgrid::kernel::actor::ActorImpl::by_pid(pid);
 }
 
 void SIMIX_process_on_exit(smx_actor_t actor,

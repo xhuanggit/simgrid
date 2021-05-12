@@ -38,6 +38,24 @@ void (*SMPI_switch_data_segment)(simgrid::s4u::ActorPtr) = nullptr;
 namespace simgrid {
 namespace simix {
 config::Flag<bool> cfg_verbose_exit{"debug/verbose-exit", "Display the actor status at exit", true};
+
+void* simix_global_get_actors_addr()
+{
+#if SIMGRID_HAVE_MC
+  return simix_global->actors_vector;
+#else
+  xbt_die("This function is intended to be used when compiling with MC");
+#endif
+}
+void* simix_global_get_dead_actors_addr()
+{
+#if SIMGRID_HAVE_MC
+  return simix_global->dead_actors_vector;
+#else
+  xbt_die("This function is intended to be used when compiling with MC");
+#endif
+}
+
 } // namespace simix
 } // namespace simgrid
 
@@ -197,16 +215,14 @@ void Global::run_all_actors()
 void Global::wake_all_waiting_actors() const
 {
   for (auto const& model : simgrid::kernel::EngineImpl::get_instance()->get_all_models()) {
-    kernel::resource::Action* action;
-
     XBT_DEBUG("Handling the failed actions (if any)");
-    while ((action = model->extract_failed_action())) {
+    while (auto* action = model->extract_failed_action()) {
       XBT_DEBUG("   Handling Action %p", action);
       if (action->get_activity() != nullptr)
         kernel::activity::ActivityImplPtr(action->get_activity())->post();
     }
     XBT_DEBUG("Handling the terminated actions (if any)");
-    while ((action = model->extract_done_action())) {
+    while (auto* action = model->extract_done_action()) {
       XBT_DEBUG("   Handling Action %p", action);
       if (action->get_activity() == nullptr)
         XBT_DEBUG("probably vcpu's action %p, skip", action);
@@ -247,7 +263,7 @@ void Global::display_all_actor_status() const
                (xbt_log_no_loc ? (size_t)0xDEADBEEF : (size_t)actor->waiting_synchro_.get()),
                actor->waiting_synchro_->get_cname(), (int)actor->waiting_synchro_->state_);
     } else {
-      XBT_INFO("Actor %ld (%s@%s)", actor->get_pid(), actor->get_cname(), actor->get_host()->get_cname());
+      XBT_INFO("Actor %ld (%s@%s) simcall %s", actor->get_pid(), actor->get_cname(), actor->get_host()->get_cname(), SIMIX_simcall_name(actor->simcall_.call_));
     }
   }
 }
@@ -267,22 +283,19 @@ void SIMIX_set_maestro(void (*code)(void*), void* data)
   maestro_code = std::bind(code, data);
 }
 
-/**
- * @ingroup SIMIX_API
- * @brief Initialize SIMIX internal data.
- */
 void SIMIX_global_init(int* argc, char** argv)
 {
+  if (simix_global == nullptr) {
+    simix_global = std::make_unique<simgrid::simix::Global>();
+
 #if SIMGRID_HAVE_MC
-  // The communication initialization is done ASAP.
-  // We need to communicate  initialization of the different layers to the model-checker.
-  simgrid::mc::AppSide::initialize();
+    // The communication initialization is done ASAP, as we need to get some init parameters from the MC for different layers.
+    // But simix_global needs to be created, as we send the address of some of its fields to the MC that wants to read them directly.
+    simgrid::mc::AppSide::initialize();
 #endif
 
-  if (simix_global == nullptr) {
     surf_init(argc, argv); /* Initialize SURF structures */
 
-    simix_global           = std::make_unique<simgrid::simix::Global>();
     simix_global->maestro_ = nullptr;
     SIMIX_context_mod_init();
 
@@ -585,7 +598,7 @@ void SIMIX_timer_remove(smx_timer_t timer) // XBT_ATTRIB_DEPRECATED_v329
 /** @brief Returns the date at which the timer will trigger (or 0 if nullptr timer) */
 double SIMIX_timer_get_date(smx_timer_t timer) // XBT_ATTRIB_DEPRECATED_v329
 {
-  return timer ? timer->get_date() : 0;
+  return timer ? timer->date : 0.0;
 }
 
 void SIMIX_display_process_status() // XBT_ATTRIB_DEPRECATED_v329

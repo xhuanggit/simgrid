@@ -40,33 +40,24 @@ static simgrid::config::Flag<std::string>
 void surf_cpu_model_init_Cas01()
 {
   if (cpu_optim_opt == "TI") {
-    simgrid::kernel::resource::CpuTiModel::create_pm_vm_models();
+    simgrid::kernel::resource::CpuTiModel::create_pm_models();
     return;
   }
 
-  simgrid::kernel::resource::Model::UpdateAlgo algo;
-  if (cpu_optim_opt == "Lazy")
-    algo = simgrid::kernel::resource::Model::UpdateAlgo::LAZY;
-  else
-    algo = simgrid::kernel::resource::Model::UpdateAlgo::FULL;
-
-  auto cpu_model_pm = std::make_shared<simgrid::kernel::resource::CpuCas01Model>(algo);
-  simgrid::kernel::EngineImpl::get_instance()->add_model(simgrid::kernel::resource::Model::Type::CPU_PM, cpu_model_pm,
-                                                         true);
+  auto cpu_model_pm = std::make_shared<simgrid::kernel::resource::CpuCas01Model>("Cpu_Cas01");
+  simgrid::kernel::EngineImpl::get_instance()->add_model(cpu_model_pm);
   simgrid::s4u::Engine::get_instance()->get_netzone_root()->get_impl()->set_cpu_pm_model(cpu_model_pm);
-
-  auto cpu_model_vm = std::make_shared<simgrid::kernel::resource::CpuCas01Model>(algo);
-  simgrid::kernel::EngineImpl::get_instance()->add_model(simgrid::kernel::resource::Model::Type::CPU_VM, cpu_model_vm,
-                                                         true);
-  simgrid::s4u::Engine::get_instance()->get_netzone_root()->get_impl()->set_cpu_vm_model(cpu_model_vm);
 }
 
 namespace simgrid {
 namespace kernel {
 namespace resource {
 
-CpuCas01Model::CpuCas01Model(Model::UpdateAlgo algo) : CpuModel(algo)
+CpuCas01Model::CpuCas01Model(const std::string& name) : CpuModel(name)
 {
+  if (config::get_value<std::string>("cpu/optim") == "Lazy")
+    set_update_algorithm(Model::UpdateAlgo::LAZY);
+
   bool select = config::get_value<bool>("cpu/maxmin-selective-update");
 
   if (is_update_lazy()) {
@@ -94,13 +85,12 @@ bool CpuCas01::is_used() const
 /** @brief take into account changes of speed (either load or max) */
 void CpuCas01::on_speed_change()
 {
-  const lmm::Variable* var;
   const lmm::Element* elem = nullptr;
 
   get_model()->get_maxmin_system()->update_constraint_bound(get_constraint(),
                                                             get_core_count() * speed_.scale * speed_.peak);
-  while ((var = get_constraint()->get_variable(&elem))) {
-    const CpuCas01Action* action = static_cast<CpuCas01Action*>(var->get_id());
+  while (const auto* var = get_constraint()->get_variable(&elem)) {
+    const auto* action = static_cast<CpuCas01Action*>(var->get_id());
 
     get_model()->get_maxmin_system()->update_variable_bound(action->get_variable(),
                                                             action->requested_core() * speed_.scale * speed_.peak);
@@ -129,14 +119,12 @@ void CpuCas01::apply_event(profile::Event* event, double value)
         get_iface()->turn_on();
       }
     } else {
-      const lmm::Constraint* cnst = get_constraint();
-      const lmm::Variable* var;
       const lmm::Element* elem = nullptr;
       double date              = surf_get_clock();
 
       get_iface()->turn_off();
 
-      while ((var = cnst->get_variable(&elem))) {
+      while (const auto* var = get_constraint()->get_variable(&elem)) {
         Action* action = var->get_id();
 
         if (action->get_state() == Action::State::INITED || action->get_state() == Action::State::STARTED ||

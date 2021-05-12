@@ -86,7 +86,7 @@ Session::Session(const std::function<void()>& code)
 
   xbt_assert(mc_model_checker == nullptr, "Did you manage to start the MC twice in this process?");
 
-  auto process = std::make_unique<simgrid::mc::RemoteSimulation>(pid);
+  auto process   = std::make_unique<simgrid::mc::RemoteProcess>(pid);
   model_checker_ = std::make_unique<simgrid::mc::ModelChecker>(std::move(process), sockets[1]);
 
   mc_model_checker = model_checker_.get();
@@ -98,8 +98,8 @@ Session::~Session()
   this->close();
 }
 
-/** Take the initial snapshot of the application, that must be stopped. */
-void Session::initialize()
+/** The application must be stopped. */
+void Session::take_initial_snapshot()
 {
   xbt_assert(initial_snapshot_ == nullptr);
   model_checker_->wait_for_requests();
@@ -114,7 +114,7 @@ void Session::execute(Transition const& transition) const
 
 void Session::restore_initial_state() const
 {
-  this->initial_snapshot_->restore(&model_checker_->get_remote_simulation());
+  this->initial_snapshot_->restore(&model_checker_->get_remote_process());
 }
 
 void Session::log_state() const
@@ -154,7 +154,6 @@ bool Session::actor_is_enabled(aid_t pid) const
   return ((s_mc_message_int_t*)buff.data())->value;
 }
 
-simgrid::mc::Session* session;
-
+simgrid::mc::Session* session_singleton;
 }
 }

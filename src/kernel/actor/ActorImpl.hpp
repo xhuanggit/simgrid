@@ -36,7 +36,7 @@ public:
   ~ActorImpl();
 
   /** Retrieve the actor implementation from its PID (or nullptr if non-existent) */
-  static ActorImpl* by_PID(aid_t PID);
+  static ActorImpl* by_pid(aid_t pid);
 
   static ActorImpl* self();
   double get_kill_time() const;
@@ -198,6 +198,8 @@ using SynchroList =
 
 XBT_PUBLIC void create_maestro(const std::function<void()>& code);
 XBT_PUBLIC unsigned long get_maxpid();
+XBT_PUBLIC void* get_maxpid_addr(); // In MC mode, the application sends this pointers to the MC
+
 } // namespace actor
 } // namespace kernel
 } // namespace simgrid

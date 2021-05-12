@@ -16,7 +16,6 @@
 #include "src/surf/network_interface.hpp"
 #include "src/surf/surf_interface.hpp"
 
-#include <boost/range/algorithm.hpp>
 XBT_LOG_NEW_DEFAULT_SUBCATEGORY(simix_network, simix, "SIMIX network-related synchronization");
 
 XBT_PRIVATE void simcall_HANDLER_comm_send(smx_simcall_t simcall, smx_actor_t src, smx_mailbox_t mbox, double task_size,
@@ -284,13 +283,8 @@ static void SIMIX_waitany_remove_simcall_from_actions(smx_simcall_t simcall)
   simgrid::kernel::activity::CommImpl** comms = simcall_comm_waitany__get__comms(simcall);
   size_t count                                = simcall_comm_waitany__get__count(simcall);
 
-  for (size_t i = 0; i < count; i++) {
-    // Remove the first occurrence of simcall:
-    auto* comm = comms[i];
-    auto j     = boost::range::find(comm->simcalls_, simcall);
-    if (j != comm->simcalls_.end())
-      comm->simcalls_.erase(j);
-  }
+  for (size_t i = 0; i < count; i++)
+    comms[i]->unregister_simcall(simcall);
 }
 void simcall_HANDLER_comm_waitany(smx_simcall_t simcall, simgrid::kernel::activity::CommImpl* comms[], size_t count,
                                   double timeout)
@@ -335,8 +329,10 @@ void simcall_HANDLER_comm_waitany(smx_simcall_t simcall, simgrid::kernel::activi
 /******************************************************************************/
 /*                    SIMIX_comm_copy_data callbacks                       */
 /******************************************************************************/
-static void (*SIMIX_comm_copy_data_callback)(simgrid::kernel::activity::CommImpl*, void*,
-                                             size_t) = &SIMIX_comm_copy_pointer_callback;
+void SIMIX_comm_set_copy_data_callback(void (*callback)(simgrid::kernel::activity::CommImpl*, void*, size_t))
+{
+  simgrid::kernel::activity::CommImpl::set_copy_data_callback(callback);
+}
 
 void SIMIX_comm_copy_buffer_callback(simgrid::kernel::activity::CommImpl* comm, void* buff, size_t buff_size)
 {
@@ -349,11 +345,6 @@ void SIMIX_comm_copy_buffer_callback(simgrid::kernel::activity::CommImpl* comm, 
   }
 }
 
-void SIMIX_comm_set_copy_data_callback(void (*callback)(simgrid::kernel::activity::CommImpl*, void*, size_t))
-{
-  SIMIX_comm_copy_data_callback = callback;
-}
-
 void SIMIX_comm_copy_pointer_callback(simgrid::kernel::activity::CommImpl* comm, void* buff, size_t buff_size)
 {
   xbt_assert((buff_size == sizeof(void*)), "Cannot copy %zu bytes: must be sizeof(void*)", buff_size);
@@ -363,6 +354,13 @@ void SIMIX_comm_copy_pointer_callback(simgrid::kernel::activity::CommImpl* comm,
 namespace simgrid {
 namespace kernel {
 namespace activity {
+
+void (*CommImpl::copy_data_callback_)(CommImpl*, void*, size_t) = &SIMIX_comm_copy_pointer_callback;
+
+void CommImpl::set_copy_data_callback(void (*callback)(CommImpl*, void*, size_t))
+{
+  copy_data_callback_ = callback;
+}
 
 CommImpl& CommImpl::set_size(double size)
 {
@@ -485,7 +483,7 @@ void CommImpl::copy_data()
 
   /* Copy at most dst_buff_size bytes of the message to receiver's buffer */
   if (dst_buff_size_) {
-    buff_size = std::min(buff_size, *(dst_buff_size_));
+    buff_size = std::min(buff_size, *dst_buff_size_);
 
     /* Update the receiver's buffer size to the copied amount */
     *dst_buff_size_ = buff_size;
@@ -495,7 +493,7 @@ void CommImpl::copy_data()
     if (copy_data_fun)
       copy_data_fun(this, src_buff_, buff_size);
     else
-      SIMIX_comm_copy_data_callback(this, src_buff_, buff_size);
+      copy_data_callback_(this, src_buff_, buff_size);
   }
 
   /* Set the copied flag so we copy data only once */

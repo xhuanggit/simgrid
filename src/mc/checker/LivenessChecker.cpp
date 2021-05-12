@@ -4,10 +4,10 @@
  * under the terms of the license (GNU LGPL) which comes with this package. */
 
 #include "src/mc/checker/LivenessChecker.hpp"
+#include "src/mc/Session.hpp"
 #include "src/mc/mc_config.hpp"
 #include "src/mc/mc_exit.hpp"
 #include "src/mc/mc_private.hpp"
-#include "src/mc/mc_request.hpp"
 
 #include <boost/range/algorithm.hpp>
 #include <cstring>
@@ -116,8 +116,7 @@ void LivenessChecker::replay()
     }
   }
 
-  /* Restore the initial state */
-  api::get().restore_initial_state();
+  get_session().restore_initial_state();
 
   /* Traverse the stack from the initial state and re-execute the transitions */
   int depth = 1;
@@ -202,9 +201,7 @@ void LivenessChecker::purge_visited_pairs()
   }
 }
 
-LivenessChecker::LivenessChecker() : Checker()
-{
-}
+LivenessChecker::LivenessChecker(Session* session) : Checker(session) {}
 
 RecordTrace LivenessChecker::get_record_trace() // override
 {
@@ -259,11 +256,13 @@ std::shared_ptr<Pair> LivenessChecker::create_pair(const Pair* current_pair, xbt
     next_pair->depth = current_pair->depth + 1;
   else
     next_pair->depth = 1;
-  /* Get enabled actors and insert them in the interleave set of the next graph_state */
-  auto actors = api::get().get_actors();
-  for (auto& actor : actors)
-    if (api::get().actor_is_enabled(actor.copy.get_buffer()->get_pid()))
-      next_pair->graph_state->mark_todo(actor.copy.get_buffer());
+  /* Add all enabled actors to the interleave set of the initial state */
+  for (auto& act : api::get().get_actors()) {
+    auto actor = act.copy.get_buffer();
+    if (get_session().actor_is_enabled(actor->get_pid()))
+      next_pair->graph_state->mark_todo(actor);
+  }
+
   next_pair->requests = next_pair->graph_state->count_todo();
   /* FIXME : get search_cycle value for each accepting state */
   if (next_pair->automaton_state->type == 1 || (current_pair && current_pair->search_cycle))
@@ -301,7 +300,7 @@ void LivenessChecker::run()
   api::get().automaton_load(_sg_mc_property_file.get().c_str());
 
   XBT_DEBUG("Starting the liveness algorithm");
-  api::get().session_initialize();
+  get_session().take_initial_snapshot();
 
   /* Initialize */
   this->previous_pair_ = 0;
@@ -408,9 +407,9 @@ void LivenessChecker::run()
   api::get().log_state();
 }
 
-Checker* createLivenessChecker()
+Checker* createLivenessChecker(Session* session)
 {
-  return new LivenessChecker();
+  return new LivenessChecker(session);
 }
 
 } // namespace mc

@@ -15,6 +15,7 @@
 #include <array>
 #include <functional>
 #include <string>
+#include <complex>
 
 XBT_LOG_NEW_DEFAULT_SUBCATEGORY(smpi_datatype, smpi, "Logging specific to SMPI (datatype)");
 
@@ -90,13 +91,17 @@ CREATE_MPI_DATATYPE(INTEGER8, 48, int64_t)
 CREATE_MPI_DATATYPE(INTEGER16, 49, integer128_t)
 
 CREATE_MPI_DATATYPE(LONG_DOUBLE_INT, 50, long_double_int)
+CREATE_MPI_DATATYPE(CXX_BOOL, 51, bool)
+CREATE_MPI_DATATYPE(CXX_FLOAT_COMPLEX, 52, std::complex<float>)
+CREATE_MPI_DATATYPE(CXX_DOUBLE_COMPLEX, 53, std::complex<double>)
+CREATE_MPI_DATATYPE(CXX_LONG_DOUBLE_COMPLEX, 54, std::complex<long double>)
 
-CREATE_MPI_DATATYPE_NULL(UB, 51)
-CREATE_MPI_DATATYPE_NULL(LB, 52)
-CREATE_MPI_DATATYPE(PACKED, 53, char)
+CREATE_MPI_DATATYPE_NULL(UB, 55)
+CREATE_MPI_DATATYPE_NULL(LB, 56)
+CREATE_MPI_DATATYPE(PACKED, 57, char)
 // Internal use only
-CREATE_MPI_DATATYPE(PTR, 54, void*)
-CREATE_MPI_DATATYPE(COUNT, 55, long long)
+CREATE_MPI_DATATYPE(PTR, 58, void*)
+CREATE_MPI_DATATYPE(COUNT, 59, long long)
 MPI_Datatype MPI_PTR = &smpi_MPI_PTR;
 
 
@@ -115,7 +120,7 @@ Datatype::Datatype(int size, MPI_Aint lb, MPI_Aint ub, int flags) : size_(size),
   this->add_f();
 #if SIMGRID_HAVE_MC
   if(MC_is_active())
-    MC_ignore(&(refcount_), sizeof(refcount_));
+    MC_ignore(&refcount_, sizeof refcount_);
 #endif
 }
 
@@ -126,7 +131,7 @@ Datatype::Datatype(const char* name, int ident, int size, MPI_Aint lb, MPI_Aint 
   id2type_lookup.insert({id, this});
 #if SIMGRID_HAVE_MC
   if(MC_is_active())
-    MC_ignore(&(refcount_), sizeof(refcount_));
+    MC_ignore(&refcount_, sizeof refcount_);
 #endif
 }
 
@@ -152,7 +157,6 @@ Datatype::~Datatype()
       return;
   }
   cleanup_attr<Datatype>();
-  delete contents_;
 }
 
 int Datatype::copy_attrs(Datatype* datatype){
@@ -187,8 +191,7 @@ int Datatype::copy_attrs(Datatype* datatype){
       }
     }
   }
-  delete contents_;
-  contents_ = new Datatype_contents(MPI_COMBINER_DUP, 0, nullptr, 0, nullptr, 1, &datatype);
+  set_contents(MPI_COMBINER_DUP, 0, nullptr, 0, nullptr, 1, &datatype);
   return ret;
 }
 
@@ -204,7 +207,7 @@ void Datatype::ref()
 
 #if SIMGRID_HAVE_MC
   if(MC_is_active())
-    MC_ignore(&(refcount_), sizeof(refcount_));
+    MC_ignore(&refcount_, sizeof refcount_);
 #endif
 }
 
@@ -215,7 +218,7 @@ void Datatype::unref(MPI_Datatype datatype)
 
 #if SIMGRID_HAVE_MC
   if(MC_is_active())
-    MC_ignore(&(datatype->refcount_), sizeof(datatype->refcount_));
+    MC_ignore(&datatype->refcount_, sizeof datatype->refcount_);
 #endif
 
   if (datatype->refcount_ == 0 && not(datatype->flags_ & DT_FLAG_PREDEFINED))
@@ -416,15 +419,15 @@ int Datatype::create_vector(int count, int block_length, int stride, MPI_Datatyp
     ub=((count-1)*stride+block_length-1)*old_type->get_extent()+old_type->ub();
   }
   if(old_type->flags() & DT_FLAG_DERIVED || stride != block_length){
-    *new_type = new Type_Vector(count * (block_length) * old_type->size(), lb, ub,
-                                   DT_FLAG_DERIVED, count, block_length, stride, old_type);
+    *new_type = new Type_Vector(count * block_length * old_type->size(), lb, ub, DT_FLAG_DERIVED, count, block_length,
+                                stride, old_type);
     retval=MPI_SUCCESS;
   }else{
     /* in this situation the data are contiguous thus it's not required to serialize and unserialize it*/
     *new_type = new Datatype(count * block_length * old_type->size(), 0, ((count -1) * stride + block_length)*
                          old_type->size(), DT_FLAG_CONTIGUOUS);
     const std::array<int, 3> ints = {{count, block_length, stride}};
-    (*new_type)->contents_ = new Datatype_contents(MPI_COMBINER_VECTOR, 3, ints.data(), 0, nullptr, 1, &old_type);
+    (*new_type)->set_contents(MPI_COMBINER_VECTOR, 3, ints.data(), 0, nullptr, 1, &old_type);
     retval=MPI_SUCCESS;
   }
   return retval;
@@ -443,14 +446,14 @@ int Datatype::create_hvector(int count, int block_length, MPI_Aint stride, MPI_D
     ub=((count-1)*stride)+(block_length-1)*old_type->get_extent()+old_type->ub();
   }
   if(old_type->flags() & DT_FLAG_DERIVED || stride != block_length*old_type->get_extent()){
-    *new_type = new Type_Hvector(count * (block_length) * old_type->size(), lb, ub,
-                                   DT_FLAG_DERIVED, count, block_length, stride, old_type);
+    *new_type = new Type_Hvector(count * block_length * old_type->size(), lb, ub, DT_FLAG_DERIVED, count, block_length,
+                                 stride, old_type);
     retval=MPI_SUCCESS;
   }else{
     /* in this situation the data are contiguous thus it's not required to serialize and unserialize it*/
     *new_type = new Datatype(count * block_length * old_type->size(), 0, count * block_length * old_type->size(), DT_FLAG_CONTIGUOUS);
     const std::array<int, 2> ints = {{count, block_length}};
-    (*new_type)->contents_ = new Datatype_contents(MPI_COMBINER_HVECTOR, 2, ints.data(), 1, &stride, 1, &old_type);
+    (*new_type)->set_contents(MPI_COMBINER_HVECTOR, 2, ints.data(), 1, &stride, 1, &old_type);
     retval=MPI_SUCCESS;
   }
   return retval;

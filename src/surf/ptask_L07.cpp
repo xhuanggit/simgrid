@@ -23,32 +23,31 @@ void surf_host_model_init_ptask_L07()
 {
   XBT_CINFO(xbt_cfg, "Switching to the L07 model to handle parallel tasks.");
 
-  auto host_model = std::make_shared<simgrid::surf::HostL07Model>();
-  simgrid::kernel::EngineImpl::get_instance()->add_model(simgrid::kernel::resource::Model::Type::HOST, host_model,
-                                                         true);
+  auto host_model = std::make_shared<simgrid::surf::HostL07Model>("Host_Ptask");
+  simgrid::kernel::EngineImpl::get_instance()->add_model(host_model);
   simgrid::s4u::Engine::get_instance()->get_netzone_root()->get_impl()->set_host_model(host_model);
 }
 
 namespace simgrid {
 namespace surf {
 
-HostL07Model::HostL07Model() : HostModel()
+HostL07Model::HostL07Model(const std::string& name) : HostModel(name)
 {
   auto* maxmin_system = new simgrid::kernel::lmm::FairBottleneck(true /* selective update */);
   set_maxmin_system(maxmin_system);
 
-  auto net_model = std::make_shared<NetworkL07Model>(this, maxmin_system);
+  auto net_model = std::make_shared<NetworkL07Model>("Network_Ptask", this, maxmin_system);
   auto engine    = simgrid::kernel::EngineImpl::get_instance();
-  engine->add_model(simgrid::kernel::resource::Model::Type::NETWORK, net_model, true);
+  engine->add_model(net_model);
   simgrid::s4u::Engine::get_instance()->get_netzone_root()->get_impl()->set_network_model(net_model);
 
-  auto cpu_model = std::make_shared<CpuL07Model>(this, maxmin_system);
-  engine->add_model(simgrid::kernel::resource::Model::Type::CPU_PM, cpu_model, true);
+  auto cpu_model = std::make_shared<CpuL07Model>("Cpu_Ptask", this, maxmin_system);
+  engine->add_model(cpu_model);
   simgrid::s4u::Engine::get_instance()->get_netzone_root()->get_impl()->set_cpu_pm_model(cpu_model);
 }
 
-CpuL07Model::CpuL07Model(HostL07Model* hmodel, kernel::lmm::System* sys)
-    : CpuModel(Model::UpdateAlgo::FULL), hostModel_(hmodel)
+CpuL07Model::CpuL07Model(const std::string& name, HostL07Model* hmodel, kernel::lmm::System* sys)
+    : CpuModel(name), hostModel_(hmodel)
 {
   set_maxmin_system(sys);
 }
@@ -58,8 +57,8 @@ CpuL07Model::~CpuL07Model()
   set_maxmin_system(nullptr);
 }
 
-NetworkL07Model::NetworkL07Model(HostL07Model* hmodel, kernel::lmm::System* sys)
-    : NetworkModel(Model::UpdateAlgo::FULL), hostModel_(hmodel)
+NetworkL07Model::NetworkL07Model(const std::string& name, HostL07Model* hmodel, kernel::lmm::System* sys)
+    : NetworkModel(name), hostModel_(hmodel)
 {
   set_maxmin_system(sys);
   loopback_ = NetworkL07Model::create_link(
@@ -284,11 +283,10 @@ bool CpuL07::is_used() const
 /** @brief take into account changes of speed (either load or max) */
 void CpuL07::on_speed_change()
 {
-  const kernel::lmm::Variable* var;
   const kernel::lmm::Element* elem = nullptr;
 
   get_model()->get_maxmin_system()->update_constraint_bound(get_constraint(), speed_.peak * speed_.scale);
-  while ((var = get_constraint()->get_variable(&elem))) {
+  while (const auto* var = get_constraint()->get_variable(&elem)) {
     const kernel::resource::Action* action = var->get_id();
 
     get_model()->get_maxmin_system()->update_variable_bound(action->get_variable(), speed_.scale * speed_.peak);
@@ -370,13 +368,11 @@ void LinkL07::set_bandwidth(double value)
 kernel::resource::LinkImpl* LinkL07::set_latency(double value)
 {
   latency_check(value);
-  const kernel::lmm::Variable* var;
-  L07Action* action;
   const kernel::lmm::Element* elem = nullptr;
 
   latency_.peak = value;
-  while ((var = get_constraint()->get_variable(&elem))) {
-    action = static_cast<L07Action*>(var->get_id());
+  while (const auto* var = get_constraint()->get_variable(&elem)) {
+    auto* action = static_cast<L07Action*>(var->get_id());
     action->updateBound();
   }
   return this;

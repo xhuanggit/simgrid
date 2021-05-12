@@ -7,23 +7,12 @@
 #include "simgrid/Exception.hpp"
 #include "src/kernel/activity/MutexImpl.hpp"
 #include "src/kernel/activity/SynchroRaw.hpp"
+#include "src/kernel/actor/SimcallObserver.hpp"
+#include <cmath> // std::isfinite
 
 XBT_LOG_NEW_DEFAULT_SUBCATEGORY(simix_condition, simix_synchro, "Condition variables");
 
 /********************************* Condition **********************************/
-
-/** @brief Handle a condition waiting simcall without timeouts */
-void simcall_HANDLER_cond_wait(smx_simcall_t simcall, smx_cond_t cond, smx_mutex_t mutex)
-{
-  cond->wait(mutex, -1, simcall->issuer_);
-}
-
-/** @brief Handle a condition waiting simcall with timeouts */
-void simcall_HANDLER_cond_wait_timeout(smx_simcall_t simcall, smx_cond_t cond, smx_mutex_t mutex, double timeout)
-{
-  simcall_cond_wait_timeout__set__result(simcall, 0); // default result, will be set to 1 on timeout
-  cond->wait(mutex, timeout, simcall->issuer_);
-}
 
 namespace simgrid {
 namespace kernel {
@@ -50,14 +39,9 @@ void ConditionVariableImpl::signal()
 
     /* Now transform the cond wait simcall into a mutex lock one */
     smx_simcall_t simcall = &proc.simcall_;
-    MutexImpl* simcall_mutex;
-    if (simcall->call_ == simix::Simcall::COND_WAIT)
-      simcall_mutex = simcall_cond_wait__get__mutex(simcall);
-    else
-      simcall_mutex = simcall_cond_wait_timeout__get__mutex(simcall);
-    simcall->call_ = simix::Simcall::RUN_BLOCKING;
-
-    simcall_mutex->lock(simcall->issuer_);
+    const auto* observer  = dynamic_cast<kernel::actor::ConditionWaitSimcall*>(simcall->observer_);
+    xbt_assert(observer != nullptr);
+    observer->get_mutex()->lock(simcall->issuer_);
   }
   XBT_OUT();
 }
@@ -80,6 +64,7 @@ void ConditionVariableImpl::broadcast()
 void ConditionVariableImpl::wait(smx_mutex_t mutex, double timeout, actor::ActorImpl* issuer)
 {
   XBT_DEBUG("Wait condition %p", this);
+  xbt_assert(std::isfinite(timeout), "timeout is not finite!");
 
   /* If there is a mutex unlock it */
   if (mutex != nullptr) {
@@ -92,8 +77,9 @@ void ConditionVariableImpl::wait(smx_mutex_t mutex, double timeout, actor::Actor
 
   RawImplPtr synchro(new RawImpl([this, issuer]() {
     this->remove_sleeping_actor(*issuer);
-    if (issuer->simcall_.call_ == simix::Simcall::COND_WAIT_TIMEOUT)
-      simcall_cond_wait_timeout__set__result(&issuer->simcall_, 1);
+    auto* observer = dynamic_cast<kernel::actor::ConditionWaitSimcall*>(issuer->simcall_.observer_);
+    xbt_assert(observer != nullptr);
+    observer->set_result(true);
   }));
   synchro->set_host(issuer->get_host()).set_timeout(timeout).start();
   synchro->register_simcall(&issuer->simcall_);

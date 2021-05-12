@@ -23,8 +23,8 @@ extern unsigned smx_context_guard_size;
 
 SG_BEGIN_DECL
 
-XBT_ATTRIB_DEPRECATED_v331("Please use sg_actor_by_PID instead.") XBT_PUBLIC smx_actor_t
-    SIMIX_process_from_PID(aid_t PID);
+XBT_ATTRIB_DEPRECATED_v331("Please use sg_actor_by_pid() instead.") XBT_PUBLIC smx_actor_t
+    SIMIX_process_from_PID(aid_t pid);
 
 /* parallelism */
 XBT_PUBLIC int SIMIX_context_is_parallel();
@@ -64,7 +64,7 @@ SG_END_DECL
 SG_BEGIN_DECL
 XBT_ATTRIB_DEPRECATED_v329("Please use simgrid_register_default() or Engine::register_default()") XBT_PUBLIC
     void SIMIX_function_register_default(xbt_main_func_t code);
-XBT_ATTRIB_DEPRECATED_v329("This function will be removed in 3.29") XBT_PUBLIC void SIMIX_init_application();
+XBT_ATTRIB_DEPRECATED_v329("This function will be removed") XBT_PUBLIC void SIMIX_init_application();
 
 XBT_PUBLIC void SIMIX_process_set_function(const char* process_host, const char* process_function,
                                            xbt_dynar_t arguments, double process_start_time, double process_kill_time);
@@ -84,13 +84,12 @@ SG_BEGIN_DECL
 XBT_ATTRIB_DEPRECATED_v329("Please use sg_actor_count()") XBT_PUBLIC int SIMIX_process_count();
 XBT_PUBLIC smx_actor_t SIMIX_process_self();
 XBT_PUBLIC const char* SIMIX_process_self_get_name();
-XBT_ATTRIB_DEPRECATED_v329("This function will be removed in 3.29") XBT_PUBLIC
-    void SIMIX_process_self_set_data(void* data);
-XBT_ATTRIB_DEPRECATED_v329("This function will be removed in 3.29") XBT_PUBLIC void* SIMIX_process_self_get_data();
+XBT_ATTRIB_DEPRECATED_v329("This function will be removed") XBT_PUBLIC void SIMIX_process_self_set_data(void* data);
+XBT_ATTRIB_DEPRECATED_v329("This function will be removed") XBT_PUBLIC void* SIMIX_process_self_get_data();
 SG_END_DECL
 
 #ifdef __cplusplus
-XBT_ATTRIB_DEPRECATED_v329("This function will be removed in 3.29") XBT_PUBLIC
+XBT_ATTRIB_DEPRECATED_v329("This function will be removed") XBT_PUBLIC
     void SIMIX_process_on_exit(smx_actor_t process, const std::function<void(bool /*failed*/)>& fun);
 #endif
 
@@ -117,8 +116,9 @@ XBT_ATTRIB_DEPRECATED_v330("Please use s4u::Exec::wait_for()") XBT_PUBLIC simgri
     simcall_execution_wait(simgrid::kernel::activity::ActivityImpl* execution, double timeout);
 XBT_ATTRIB_DEPRECATED_v330("Please use s4u::Exec::wait_for()") XBT_PUBLIC simgrid::kernel::activity::State
     simcall_execution_wait(const simgrid::kernel::activity::ActivityImplPtr& execution, double timeout);
-XBT_PUBLIC unsigned int simcall_execution_waitany_for(simgrid::kernel::activity::ExecImpl* execs[], size_t count,
-                                                      double timeout);
+XBT_ATTRIB_DEPRECATED_v331("Please use s4u::Exec::wait_any_for()") XBT_PUBLIC
+    unsigned int simcall_execution_waitany_for(simgrid::kernel::activity::ExecImpl* execs[], size_t count,
+                                               double timeout);
 XBT_ATTRIB_DEPRECATED_v330("Please use s4u::Exec::test()") XBT_PUBLIC
     bool simcall_execution_test(simgrid::kernel::activity::ActivityImpl* execution);
 XBT_ATTRIB_DEPRECATED_v330("Please use s4u::Exec::test()") XBT_PUBLIC
@@ -128,8 +128,8 @@ XBT_ATTRIB_DEPRECATED_v330("Please use s4u::Exec::test()") XBT_PUBLIC
 
 /**************************** Process simcalls ********************************/
 SG_BEGIN_DECL
-XBT_ATTRIB_DEPRECATED_v329("This function will be removed in 3.29") void simcall_process_set_data(smx_actor_t process,
-                                                                                                  void* data);
+XBT_ATTRIB_DEPRECATED_v329("This function will be removed") void simcall_process_set_data(smx_actor_t process,
+                                                                                          void* data);
 XBT_ATTRIB_DEPRECATED_v328("Please use sg_actor_suspend()") XBT_PUBLIC
     void simcall_process_suspend(smx_actor_t process);
 
@@ -204,11 +204,14 @@ XBT_ATTRIB_DEPRECATED_v331("Please use sg_mutex_try_lock()") XBT_PUBLIC int simc
 XBT_ATTRIB_DEPRECATED_v331("Please use sg_mutex_unlock()") XBT_PUBLIC void simcall_mutex_unlock(smx_mutex_t mutex);
 
 XBT_ATTRIB_DEPRECATED_v330("Please use sg_cond_init()") XBT_PUBLIC smx_cond_t simcall_cond_init();
-XBT_PUBLIC void simcall_cond_wait(smx_cond_t cond, smx_mutex_t mutex);
-XBT_PUBLIC int simcall_cond_wait_timeout(smx_cond_t cond, smx_mutex_t mutex, double max_duration);
+XBT_ATTRIB_DEPRECATED_v331("Please use sg_cond_wait()") XBT_PUBLIC
+    void simcall_cond_wait(smx_cond_t cond, smx_mutex_t mutex);
+XBT_ATTRIB_DEPRECATED_v331("Please use sg_cond_wait_for()") XBT_PUBLIC
+    int simcall_cond_wait_timeout(smx_cond_t cond, smx_mutex_t mutex, double max_duration);
 
-XBT_PUBLIC void simcall_sem_acquire(smx_sem_t sem);
-XBT_PUBLIC int simcall_sem_acquire_timeout(smx_sem_t sem, double max_duration);
+XBT_ATTRIB_DEPRECATED_v331("Please use sg_sem_acquire()") XBT_PUBLIC void simcall_sem_acquire(smx_sem_t sem);
+XBT_ATTRIB_DEPRECATED_v331("Please use sg_sem_acquire_timeout()") XBT_PUBLIC
+    int simcall_sem_acquire_timeout(smx_sem_t sem, double max_duration);
 SG_END_DECL
 
 /*****************************   Io   **************************************/

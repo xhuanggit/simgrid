@@ -8,6 +8,8 @@
 #include "simgrid/s4u/Actor.hpp"
 #include "simgrid/s4u/Exec.hpp"
 #include "src/kernel/activity/ExecImpl.hpp"
+#include "src/kernel/actor/ActorImpl.hpp"
+#include "src/kernel/actor/SimcallObserver.hpp"
 #include "xbt/log.h"
 
 XBT_LOG_NEW_DEFAULT_SUBCATEGORY(s4u_exec, s4u_activity, "S4U asynchronous executions");
@@ -38,8 +40,8 @@ Exec* Exec::wait_for(double timeout)
   if (state_ == State::INITED)
     vetoable_start();
 
-  kernel::actor::ActorImpl* issuer = Actor::self()->get_impl();
-  kernel::actor::simcall_blocking<void>([this, issuer, timeout] { this->get_impl()->wait_for(issuer, timeout); });
+  kernel::actor::ActorImpl* issuer = kernel::actor::ActorImpl::self();
+  kernel::actor::simcall_blocking([this, issuer, timeout] { this->get_impl()->wait_for(issuer, timeout); });
   state_ = State::FINISHED;
   on_completion(*this);
   this->release_dependencies();
@@ -52,7 +54,13 @@ int Exec::wait_any_for(std::vector<ExecPtr>* execs, double timeout)
   std::transform(begin(*execs), end(*execs), begin(rexecs),
                  [](const ExecPtr& exec) { return static_cast<kernel::activity::ExecImpl*>(exec->pimpl_.get()); });
 
-  int changed_pos = simcall_execution_waitany_for(rexecs.data(), rexecs.size(), timeout);
+  kernel::actor::ActorImpl* issuer = kernel::actor::ActorImpl::self();
+  kernel::actor::ExecutionWaitanySimcall observer{issuer, &rexecs, timeout};
+  int changed_pos = kernel::actor::simcall_blocking(
+      [&observer] {
+        kernel::activity::ExecImpl::wait_any_for(observer.get_issuer(), observer.get_execs(), observer.get_timeout());
+      },
+      &observer);
   if (changed_pos != -1) {
     on_completion(*(execs->at(changed_pos)));
     execs->at(changed_pos)->release_dependencies();

@@ -20,16 +20,6 @@ namespace resource {
  */
 class XBT_PUBLIC Model {
 public:
-  /** @brief Possible model types */
-  enum class Type {
-    HOST,    /**< Host models: see surf_host_model_description for more details */
-    NETWORK, /**< Network models: see surf_network_model_description for more details */
-    CPU_PM,  /**< CPU model for physical machines: see surf_cpu_model_description for more details */
-    CPU_VM,  /**< CPU model for virtual machines: see surf_cpu_model_description for more details */
-    DISK,    /**< Disk models: see surf_disk_model_description for more details */
-    VM       /**< VM model */
-  };
-
   /** @brief Possible update mechanisms */
   enum class UpdateAlgo {
     FULL, /**< Full update mechanism: the remaining time of every action is recomputed at each step */
@@ -38,14 +28,14 @@ public:
                    gets recomputed anyway. In that case, you'd better not try to be cleaver with lazy and go for
                    a simple full update.  */
   };
-
-  explicit Model(Model::UpdateAlgo algo);
+  explicit Model(const std::string& name);
   Model(const Model&) = delete;
   Model& operator=(const Model&) = delete;
 
   virtual ~Model();
 
   bool is_update_lazy() const { return update_algorithm_ == UpdateAlgo::LAZY; }
+  Model* set_update_algorithm(UpdateAlgo algo);
 
   /** @brief Get the set of [actions](@ref Action) in *inited* state */
   Action::StateSet* get_inited_action_set() { return &inited_action_set_; }
@@ -135,14 +125,18 @@ public:
     return next_occurring_event_is_idempotent();
   }
 
+  /** @brief Gets the model name */
+  std::string get_name() const { return name_; }
+
 private:
+  UpdateAlgo update_algorithm_ = UpdateAlgo::FULL;
   std::unique_ptr<lmm::System> maxmin_system_;
-  const UpdateAlgo update_algorithm_;
   Action::StateSet inited_action_set_;   /**< Created not started */
   Action::StateSet started_action_set_;  /**< Started not done */
   Action::StateSet failed_action_set_;   /**< Done with failure */
   Action::StateSet finished_action_set_; /**< Done successful */
   Action::StateSet ignored_action_set_;  /**< not considered (failure detectors?) */
+  const std::string name_;               /**< Model name */
 
   ActionHeap action_heap_;
 };

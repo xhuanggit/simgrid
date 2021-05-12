@@ -114,7 +114,7 @@ void Actor::join(double timeout) const
 {
   kernel::actor::ActorImpl* issuer = kernel::actor::ActorImpl::self();
   const kernel::actor::ActorImpl* target = pimpl_;
-  kernel::actor::simcall_blocking<void>([issuer, target, timeout] {
+  kernel::actor::simcall_blocking([issuer, target, timeout] {
     if (target->finished_) {
       // The joined process is already finished, just wake up the issuer right away
       issuer->simcall_answer();
@@ -221,7 +221,7 @@ void Actor::suspend()
   kernel::actor::ActorImpl* issuer = kernel::actor::ActorImpl::self();
   kernel::actor::ActorImpl* target = pimpl_;
   s4u::Actor::on_suspend(*this);
-  kernel::actor::simcall_blocking<void>([issuer, target]() {
+  kernel::actor::simcall_blocking([issuer, target]() {
     target->suspend();
     if (target != issuer) {
       /* If we are suspending ourselves, then just do not finish the simcall now */
@@ -262,7 +262,7 @@ void Actor::kill()
 
 ActorPtr Actor::by_pid(aid_t pid)
 {
-  kernel::actor::ActorImpl* actor = kernel::actor::ActorImpl::by_PID(pid);
+  kernel::actor::ActorImpl* actor = kernel::actor::ActorImpl::by_pid(pid);
   if (actor != nullptr)
     return actor->get_iface();
   else
@@ -322,7 +322,7 @@ void sleep_for(double duration)
     kernel::actor::ActorImpl* issuer = kernel::actor::ActorImpl::self();
     Actor::on_sleep(*issuer->get_ciface());
 
-    kernel::actor::simcall_blocking<void>([issuer, duration]() {
+    kernel::actor::simcall_blocking([issuer, duration]() {
       if (MC_is_active() || MC_record_replay_is_active()) {
         MC_process_clock_add(issuer, duration);
         issuer->simcall_answer();
@@ -437,7 +437,7 @@ void suspend()
 {
   kernel::actor::ActorImpl* self = simgrid::kernel::actor::ActorImpl::self();
   s4u::Actor::on_suspend(*self->get_ciface());
-  kernel::actor::simcall_blocking<void>([self] { self->suspend(); });
+  kernel::actor::simcall_blocking([self] { self->suspend(); });
 }
 
 void exit()
@@ -492,7 +492,7 @@ sg_actor_t sg_actor_init(const char* name, sg_host_t host)
   return simgrid::s4u::Actor::init(name, host).get();
 }
 
-void sg_actor_start(sg_actor_t actor, xbt_main_func_t code, int argc, const char* const* argv)
+void sg_actor_start_(sg_actor_t actor, xbt_main_func_t code, int argc, const char* const* argv)
 {
   simgrid::kernel::actor::ActorCode function;
   if (code)
@@ -500,7 +500,7 @@ void sg_actor_start(sg_actor_t actor, xbt_main_func_t code, int argc, const char
   actor->start(function);
 }
 
-sg_actor_t sg_actor_create(const char* name, sg_host_t host, xbt_main_func_t code, int argc, const char* const* argv)
+sg_actor_t sg_actor_create_(const char* name, sg_host_t host, xbt_main_func_t code, int argc, const char* const* argv)
 {
   simgrid::kernel::actor::ActorCode function = simgrid::xbt::wrap_main(code, argc, argv);
   return simgrid::s4u::Actor::init(name, host)->start(function).get();
@@ -522,7 +522,7 @@ void sg_actor_exit()
  * This function checks whether @a actor is a valid pointer and return its PID (or 0 in case of problem).
  */
 
-aid_t sg_actor_get_PID(const_sg_actor_t actor)
+aid_t sg_actor_get_pid(const_sg_actor_t actor)
 {
   /* Do not raise an exception here: this function is called by the logs
    * and the exceptions, so it would be called back again and again */
@@ -537,7 +537,7 @@ aid_t sg_actor_get_PID(const_sg_actor_t actor)
  * This function checks whether @a actor is a valid pointer and return its parent's PID.
  * Returns -1 if the actor has not been created by any other actor.
  */
-aid_t sg_actor_get_PPID(const_sg_actor_t actor)
+aid_t sg_actor_get_ppid(const_sg_actor_t actor)
 {
   return actor->get_ppid();
 }
@@ -549,9 +549,24 @@ aid_t sg_actor_get_PPID(const_sg_actor_t actor)
  * If none is found, @c nullptr is returned.
    Note that the PID are unique in the whole simulation, not only on a given host.
  */
-sg_actor_t sg_actor_by_PID(aid_t pid)
+sg_actor_t sg_actor_by_pid(aid_t pid)
 {
   return simgrid::s4u::Actor::by_pid(pid).get();
+}
+
+aid_t sg_actor_get_PID(const_sg_actor_t actor) // XBT_ATTRIB_DEPRECATED_v331
+{
+  return sg_actor_get_pid(actor);
+}
+
+aid_t sg_actor_get_PPID(const_sg_actor_t actor) // XBT_ATTRIB_DEPRECATED_v331
+{
+  return sg_actor_get_ppid(actor);
+}
+
+sg_actor_t sg_actor_by_PID(aid_t pid) // XBT_ATTRIB_DEPRECATED_v331
+{
+  return sg_actor_by_pid(pid);
 }
 
 /** @brief Return the name of an actor. */

@@ -63,7 +63,7 @@ struct IgnoredHeapRegion {
  *  - stack unwinding;
  *  - etc.
  */
-class RemoteSimulation final : public AddressSpace {
+class RemoteProcess final : public AddressSpace {
 private:
   // Those flags are used to track down which cached information
   // is still up to date and which information needs to be updated.
@@ -73,14 +73,18 @@ private:
   static constexpr int cache_simix_processes = 4;
 
 public:
-  explicit RemoteSimulation(pid_t pid);
-  ~RemoteSimulation() override;
-  void init();
+  explicit RemoteProcess(pid_t pid);
+  ~RemoteProcess() override;
+  void init(void* mmalloc_default_mdp, void* maxpid, void* actors, void* dead_actors);
 
-  RemoteSimulation(RemoteSimulation const&) = delete;
-  RemoteSimulation(RemoteSimulation&&)      = delete;
-  RemoteSimulation& operator=(RemoteSimulation const&) = delete;
-  RemoteSimulation& operator=(RemoteSimulation&&) = delete;
+  RemoteProcess(RemoteProcess const&) = delete;
+  RemoteProcess(RemoteProcess&&)      = delete;
+  RemoteProcess& operator=(RemoteProcess const&) = delete;
+  RemoteProcess& operator=(RemoteProcess&&) = delete;
+
+  /* ************* */
+  /* Low-level API */
+  /* ************* */
 
   // Read memory:
   void* read_bytes(void* buffer, std::size_t size, RemotePtr<void> address,
@@ -115,18 +119,18 @@ public:
   // Heap access:
   xbt_mheap_t get_heap()
   {
-    if (not(this->cache_flags_ & RemoteSimulation::cache_heap))
+    if (not(this->cache_flags_ & RemoteProcess::cache_heap))
       this->refresh_heap();
     return this->heap.get();
   }
   const malloc_info* get_malloc_info()
   {
-    if (not(this->cache_flags_ & RemoteSimulation::cache_malloc))
+    if (not(this->cache_flags_ & RemoteProcess::cache_malloc))
       this->refresh_malloc_info();
     return this->heap_info.data();
   }
 
-  void clear_cache() { this->cache_flags_ = RemoteSimulation::cache_none; }
+  void clear_cache() { this->cache_flags_ = RemoteProcess::cache_none; }
 
   std::vector<IgnoredRegion> const& ignored_regions() const { return ignored_regions_; }
   void ignore_region(std::uint64_t address, std::size_t size);
@@ -156,6 +160,17 @@ public:
   void unignore_heap(void* address, size_t size);
 
   void ignore_local_variable(const char* var_name, const char* frame_name) const;
+
+  /* ***************** */
+  /* SIMIX-related API */
+  /* ***************** */
+private:
+  // Cache the address of the variables we read directly in the memory of remote
+  void* maxpid_addr_;
+  void* actors_addr_;
+  void* dead_actors_addr_;
+
+public:
   std::vector<ActorInformation>& actors();
   std::vector<ActorInformation>& dead_actors();
 
@@ -184,6 +199,9 @@ public:
     else
       return nullptr;
   }
+
+  unsigned long get_maxpid() const;
+  void get_actor_vectors(RemotePtr<s_xbt_dynar_t>& actors, RemotePtr<s_xbt_dynar_t>& dead_actors);
 
   void dump_stack() const;
 
@@ -224,7 +242,7 @@ public:
 
 private:
   /** State of the cache (which variables are up to date) */
-  int cache_flags_ = RemoteSimulation::cache_none;
+  int cache_flags_ = RemoteProcess::cache_none;
 
 public:
   /** Address of the heap structure in the MCed process. */

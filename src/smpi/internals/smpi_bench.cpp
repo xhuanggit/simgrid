@@ -9,6 +9,7 @@
 #include "simgrid/modelchecker.h"
 #include "simgrid/s4u/Exec.hpp"
 #include "smpi_comm.hpp"
+#include "smpi_utils.hpp"
 #include "src/internal_config.h"
 #include "src/mc/mc_replay.hpp"
 #include "xbt/config.hpp"
@@ -33,8 +34,6 @@ static simgrid::config::Flag<double>
     smpi_wtime_sleep("smpi/wtime",
                      "Minimum time to inject inside a call to MPI_Wtime(), gettimeofday() and clock_gettime()",
                      1e-8 /* Documented to be 10 ns */);
-
-double smpi_total_benched_time = 0;
 
 // Private execute_flops used by smpi_execute and smpi_execute_benched
 void private_execute_flops(double flops) {
@@ -162,7 +161,7 @@ void smpi_bench_end()
   }
 #endif
 
-  smpi_total_benched_time += xbt_os_timer_elapsed(timer);
+  simgrid::smpi::utils::add_benched_time(xbt_os_timer_elapsed(timer));
 }
 
 /* Private sleep function used by smpi_sleep(), smpi_usleep() and friends */
@@ -207,7 +206,7 @@ int smpi_nanosleep(const struct timespec* tp, struct timespec* t)
 
 int smpi_gettimeofday(struct timeval* tv, struct timezone* tz)
 {
-  if (not smpi_process())
+  if (not smpi_process()->initialized() || smpi_process()->finalized() || smpi_process()->sampling())
     return gettimeofday(tv, tz);
 
   smpi_bench_end();
@@ -233,7 +232,7 @@ int smpi_clock_gettime(clockid_t clk_id, struct timespec* tp)
     errno = EFAULT;
     return -1;
   }
-  if (not smpi_process())
+  if (not smpi_process()->initialized() || smpi_process()->finalized() || smpi_process()->sampling())
     return clock_gettime(clk_id, tp);
   //there is only one time in SMPI, so clk_id is ignored.
   smpi_bench_end();

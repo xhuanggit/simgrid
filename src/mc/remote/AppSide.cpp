@@ -6,8 +6,9 @@
 #include "src/mc/remote/AppSide.hpp"
 #include "src/internal_config.h"
 #include "src/kernel/actor/ActorImpl.hpp"
-#include "src/mc/checker/SimcallObserver.hpp"
-#include "src/mc/remote/RemoteSimulation.hpp"
+#include "src/kernel/actor/SimcallObserver.hpp"
+#include "src/mc/remote/RemoteProcess.hpp"
+#include "xbt/xbt_modinter.h" /* mmalloc_preinit to get the default mmalloc arena address */
 #include <simgrid/modelchecker.h>
 
 #include <cerrno>
@@ -63,6 +64,11 @@ AppSide* AppSide::initialize()
   if (errno != 0 || raise(SIGSTOP) != 0)
     xbt_die("Could not wait for the model-checker (errno = %d: %s)", errno, strerror(errno));
 
+  s_mc_message_initial_addresses_t message{
+      MessageType::INITIAL_ADDRESSES, mmalloc_preinit(), simgrid::kernel::actor::get_maxpid_addr(),
+      simgrid::simix::simix_global_get_actors_addr(), simgrid::simix::simix_global_get_dead_actors_addr()};
+  xbt_assert(instance_->channel_.send(message) == 0, "Could not send the initial message with addresses.");
+
   instance_->handle_messages();
   return instance_.get();
 }
@@ -83,13 +89,9 @@ void AppSide::handle_deadlock_check(const s_mc_message_t*) const
   s_mc_message_int_t answer{MessageType::DEADLOCK_CHECK_REPLY, deadlock};
   xbt_assert(channel_.send(answer) == 0, "Could not send response");
 }
-void AppSide::handle_continue(const s_mc_message_t*) const
+void AppSide::handle_simcall_execute(const s_mc_message_simcall_handle_t* message) const
 {
-  /* Nothing to do */
-}
-void AppSide::handle_simcall(const s_mc_message_simcall_handle_t* message) const
-{
-  kernel::actor::ActorImpl* process = kernel::actor::ActorImpl::by_PID(message->pid_);
+  kernel::actor::ActorImpl* process = kernel::actor::ActorImpl::by_pid(message->pid_);
   xbt_assert(process != nullptr, "Invalid pid %lu", message->pid_);
   process->simcall_handle(message->times_considered_);
   if (channel_.send(MessageType::WAITING))
@@ -98,7 +100,7 @@ void AppSide::handle_simcall(const s_mc_message_simcall_handle_t* message) const
 
 void AppSide::handle_actor_enabled(const s_mc_message_actor_enabled_t* msg) const
 {
-  bool res = simgrid::mc::actor_is_enabled(kernel::actor::ActorImpl::by_PID(msg->aid));
+  bool res = simgrid::mc::actor_is_enabled(kernel::actor::ActorImpl::by_pid(msg->aid));
   s_mc_message_int_t answer{MessageType::ACTOR_ENABLED_REPLY, res};
   channel_.send(answer);
 }
@@ -109,7 +111,7 @@ void AppSide::handle_actor_enabled(const s_mc_message_actor_enabled_t* msg) cons
 
 void AppSide::handle_messages() const
 {
-  while (true) {
+  while (true) { // Until we get a CONTINUE message
     XBT_DEBUG("Waiting messages from model-checker");
 
     std::array<char, MC_MESSAGE_LENGTH> message_buffer;
@@ -126,18 +128,17 @@ void AppSide::handle_messages() const
 
       case MessageType::CONTINUE:
         assert_msg_size("MESSAGE_CONTINUE", s_mc_message_t);
-        handle_continue(message);
         return;
 
       case MessageType::SIMCALL_HANDLE:
         assert_msg_size("SIMCALL_HANDLE", s_mc_message_simcall_handle_t);
-        handle_simcall((s_mc_message_simcall_handle_t*)message_buffer.data());
+        handle_simcall_execute((s_mc_message_simcall_handle_t*)message_buffer.data());
         break;
 
       case MessageType::SIMCALL_IS_VISIBLE: {
         assert_msg_size("SIMCALL_IS_VISIBLE", s_mc_message_simcall_is_visible_t);
         auto msg_simcall                = (s_mc_message_simcall_is_visible_t*)message_buffer.data();
-        const kernel::actor::ActorImpl* actor = kernel::actor::ActorImpl::by_PID(msg_simcall->aid);
+        const kernel::actor::ActorImpl* actor = kernel::actor::ActorImpl::by_pid(msg_simcall->aid);
         xbt_assert(actor != nullptr, "Invalid pid %d", msg_simcall->aid);
         xbt_assert(actor->simcall_.observer_, "The transition of %s has no observer", actor->get_cname());
         bool value = actor->simcall_.observer_->is_visible();
@@ -151,7 +152,7 @@ void AppSide::handle_messages() const
       case MessageType::SIMCALL_TO_STRING: {
         assert_msg_size("SIMCALL_TO_STRING", s_mc_message_simcall_to_string_t);
         auto msg_simcall                = (s_mc_message_simcall_to_string_t*)message_buffer.data();
-        const kernel::actor::ActorImpl* actor = kernel::actor::ActorImpl::by_PID(msg_simcall->aid);
+        const kernel::actor::ActorImpl* actor = kernel::actor::ActorImpl::by_pid(msg_simcall->aid);
         xbt_assert(actor != nullptr, "Invalid pid %d", msg_simcall->aid);
         xbt_assert(actor->simcall_.observer_, "The transition of %s has no observer", actor->get_cname());
         std::string value = actor->simcall_.observer_->to_string(msg_simcall->time_considered);
@@ -166,7 +167,7 @@ void AppSide::handle_messages() const
       case MessageType::SIMCALL_DOT_LABEL: {
         assert_msg_size("SIMCALL_DOT_LABEL", s_mc_message_simcall_to_string_t);
         auto msg_simcall                = (s_mc_message_simcall_to_string_t*)message_buffer.data();
-        const kernel::actor::ActorImpl* actor = kernel::actor::ActorImpl::by_PID(msg_simcall->aid);
+        const kernel::actor::ActorImpl* actor = kernel::actor::ActorImpl::by_pid(msg_simcall->aid);
         xbt_assert(actor != nullptr, "Invalid pid %d", msg_simcall->aid);
         xbt_assert(actor->simcall_.observer_, "The transition of %s has no observer", actor->get_cname());
         std::string value = actor->simcall_.observer_->dot_label();
@@ -183,6 +184,18 @@ void AppSide::handle_messages() const
         handle_actor_enabled((s_mc_message_actor_enabled_t*)message_buffer.data());
         break;
 
+      case MessageType::FINALIZE: {
+#if HAVE_SMPI
+        XBT_INFO("Finalize. Smpi_enabled: %d", (int)smpi_enabled());
+        simix_global->display_all_actor_status();
+        if (smpi_enabled())
+          SMPI_finalize();
+#endif
+        s_mc_message_int_t answer{MessageType::DEADLOCK_CHECK_REPLY, 0};
+        xbt_assert(channel_.send(answer) == 0, "Could answer to FINALIZE");
+        break;
+      }
+
       default:
         xbt_die("Received unexpected message %s (%i)", to_c_str(message->type), static_cast<int>(message->type));
         break;
@@ -193,7 +206,7 @@ void AppSide::handle_messages() const
 void AppSide::main_loop() const
 {
   while (true) {
-    simgrid::mc::wait_for_requests();
+    simgrid::mc::execute_actors();
     xbt_assert(channel_.send(MessageType::WAITING) == 0, "Could not send WAITING message to model-checker");
     this->handle_messages();
   }

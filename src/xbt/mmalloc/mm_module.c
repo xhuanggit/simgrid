@@ -37,7 +37,7 @@
 #endif
 #include "mmprivate.h"
 #include "xbt/ex.h"
-#include "src/xbt_modinter.h" /* declarations of mmalloc_preinit and friends that live here */
+#include "xbt/xbt_modinter.h" /* declarations of mmalloc_preinit and friends that live here */
 
 #ifndef SEEK_SET
 #define SEEK_SET 0
@@ -265,7 +265,7 @@ void *xbt_mheap_destroy(xbt_mheap_t mdp)
     }
   }
 
-  return (mdp);
+  return mdp;
 }
 
 /* Safety gap from the heap's break address.

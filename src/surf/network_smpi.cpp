@@ -14,9 +14,6 @@
 
 XBT_LOG_EXTERNAL_DEFAULT_CATEGORY(res_network);
 
-std::vector<s_smpi_factor_t> smpi_bw_factor;
-std::vector<s_smpi_factor_t> smpi_lat_factor;
-
 /*********
  * Model *
  *********/
@@ -35,9 +32,8 @@ std::vector<s_smpi_factor_t> smpi_lat_factor;
 /*  } */
 void surf_network_model_init_SMPI()
 {
-  auto net_model = std::make_shared<simgrid::kernel::resource::NetworkSmpiModel>();
-  simgrid::kernel::EngineImpl::get_instance()->add_model(simgrid::kernel::resource::Model::Type::NETWORK, net_model,
-                                                         true);
+  auto net_model = std::make_shared<simgrid::kernel::resource::NetworkSmpiModel>("Network_SMPI");
+  simgrid::kernel::EngineImpl::get_instance()->add_model(net_model);
   simgrid::s4u::Engine::get_instance()->get_netzone_root()->get_impl()->set_network_model(net_model);
 
   simgrid::config::set_default<double>("network/weight-S", 8775);
@@ -47,12 +43,11 @@ namespace simgrid {
 namespace kernel {
 namespace resource {
 
-NetworkSmpiModel::NetworkSmpiModel() : NetworkCm02Model() {}
-
 double NetworkSmpiModel::get_bandwidth_factor(double size)
 {
+  static std::vector<s_smpi_factor_t> smpi_bw_factor;
   if (smpi_bw_factor.empty())
-    smpi_bw_factor = parse_factor(config::get_value<std::string>("smpi/bw-factor"));
+    smpi_bw_factor = simgrid::smpi::utils::parse_factor(config::get_value<std::string>("smpi/bw-factor"));
 
   double current = 1.0;
   for (auto const& fact : smpi_bw_factor) {
@@ -69,8 +64,9 @@ double NetworkSmpiModel::get_bandwidth_factor(double size)
 
 double NetworkSmpiModel::get_latency_factor(double size)
 {
+  static std::vector<s_smpi_factor_t> smpi_lat_factor;
   if (smpi_lat_factor.empty())
-    smpi_lat_factor = parse_factor(config::get_value<std::string>("smpi/lat-factor"));
+    smpi_lat_factor = simgrid::smpi::utils::parse_factor(config::get_value<std::string>("smpi/lat-factor"));
 
   double current = 1.0;
   for (auto const& fact : smpi_lat_factor) {

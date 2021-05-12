@@ -39,9 +39,8 @@ double sg_weight_S_parameter = 0.0; /* default value; can be set by model or fro
 /*  } */
 void surf_network_model_init_LegrandVelho()
 {
-  auto net_model = std::make_shared<simgrid::kernel::resource::NetworkCm02Model>();
-  simgrid::kernel::EngineImpl::get_instance()->add_model(simgrid::kernel::resource::Model::Type::NETWORK, net_model,
-                                                         true);
+  auto net_model = std::make_shared<simgrid::kernel::resource::NetworkCm02Model>("Network_LegrandVelho");
+  simgrid::kernel::EngineImpl::get_instance()->add_model(net_model);
   simgrid::s4u::Engine::get_instance()->get_netzone_root()->get_impl()->set_network_model(net_model);
 
   simgrid::config::set_default<double>("network/latency-factor", 13.01);
@@ -66,9 +65,8 @@ void surf_network_model_init_CM02()
   simgrid::config::set_default<double>("network/bandwidth-factor", 1.0);
   simgrid::config::set_default<double>("network/weight-S", 0.0);
 
-  auto net_model = std::make_shared<simgrid::kernel::resource::NetworkCm02Model>();
-  simgrid::kernel::EngineImpl::get_instance()->add_model(simgrid::kernel::resource::Model::Type::NETWORK, net_model,
-                                                         true);
+  auto net_model = std::make_shared<simgrid::kernel::resource::NetworkCm02Model>("Network_CM02");
+  simgrid::kernel::EngineImpl::get_instance()->add_model(net_model);
   simgrid::s4u::Engine::get_instance()->get_netzone_root()->get_impl()->set_network_model(net_model);
 }
 
@@ -76,10 +74,11 @@ namespace simgrid {
 namespace kernel {
 namespace resource {
 
-NetworkCm02Model::NetworkCm02Model()
-    : NetworkModel(config::get_value<std::string>("network/optim") == "Full" ? Model::UpdateAlgo::FULL
-                                                                             : Model::UpdateAlgo::LAZY)
+NetworkCm02Model::NetworkCm02Model(const std::string& name) : NetworkModel(name)
 {
+  if (config::get_value<std::string>("network/optim") == "Lazy")
+    set_update_algorithm(Model::UpdateAlgo::LAZY);
+
   std::string optim = config::get_value<std::string>("network/optim");
   bool select       = config::get_value<bool>("network/maxmin-selective-update");
 
@@ -366,11 +365,10 @@ void NetworkCm02Link::set_bandwidth(double value)
   if (sg_weight_S_parameter > 0) {
     double delta = sg_weight_S_parameter / value - sg_weight_S_parameter / (bandwidth_.peak * bandwidth_.scale);
 
-    const kernel::lmm::Variable* var;
     const kernel::lmm::Element* elem     = nullptr;
     const kernel::lmm::Element* nextelem = nullptr;
     int numelem                          = 0;
-    while ((var = get_constraint()->get_variable_safe(&elem, &nextelem, &numelem))) {
+    while (const auto* var = get_constraint()->get_variable_safe(&elem, &nextelem, &numelem)) {
       auto* action = static_cast<NetworkCm02Action*>(var->get_id());
       action->sharing_penalty_ += delta;
       if (not action->is_suspended())
@@ -384,7 +382,6 @@ LinkImpl* NetworkCm02Link::set_latency(double value)
   latency_check(value);
 
   double delta = value - latency_.peak;
-  const kernel::lmm::Variable* var;
   const kernel::lmm::Element* elem     = nullptr;
   const kernel::lmm::Element* nextelem = nullptr;
   int numelem                          = 0;
@@ -392,7 +389,7 @@ LinkImpl* NetworkCm02Link::set_latency(double value)
   latency_.scale = 1.0;
   latency_.peak  = value;
 
-  while ((var = get_constraint()->get_variable_safe(&elem, &nextelem, &numelem))) {
+  while (const auto* var = get_constraint()->get_variable_safe(&elem, &nextelem, &numelem)) {
     auto* action = static_cast<NetworkCm02Action*>(var->get_id());
     action->lat_current_ += delta;
     action->sharing_penalty_ += delta;

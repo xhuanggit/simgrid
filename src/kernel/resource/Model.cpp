@@ -12,8 +12,18 @@ namespace simgrid {
 namespace kernel {
 namespace resource {
 
-Model::Model(Model::UpdateAlgo algo) : update_algorithm_(algo) {}
-Model::~Model() = default; // Don't move this declaration to the header, or it will break external projects such as SimGrid-FMI
+Model::Model(const std::string& name) : name_(name)
+{
+}
+
+Model::~Model() =
+    default; // Don't move this declaration to the header, or it will break external projects such as SimGrid-FMI
+
+Model* Model::set_update_algorithm(Model::UpdateAlgo algo)
+{
+  update_algorithm_ = algo;
+  return this;
+}
 
 Action::ModifiedSet* Model::get_modified_set() const
 {
@@ -73,8 +83,8 @@ double Model::next_occurring_event_lazy(double now)
     if ((action->get_max_duration() != NO_MAX_DURATION) &&
         (min <= -1 || action->get_start_time() + action->get_max_duration() < min)) {
       // when the task will complete anyway because of the deadline if any
-      min          = action->get_start_time() + action->get_max_duration();
-      action_type  = ActionHeap::Type::max_duration;
+      min         = action->get_start_time() + action->get_max_duration();
+      action_type = ActionHeap::Type::max_duration;
     }
 
     XBT_DEBUG("Action(%p) corresponds to variable %d", action, action->get_variable()->rank_);

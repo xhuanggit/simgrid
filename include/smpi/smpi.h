@@ -165,10 +165,6 @@ enum ERROR_ENUM {
 #define MPI_NULL_DELETE_FN NULL
 #define MPI_ERR_LASTCODE 74
 
-#define MPI_CXX_BOOL MPI_DATATYPE_NULL
-#define MPI_CXX_FLOAT_COMPLEX MPI_DATATYPE_NULL
-#define MPI_CXX_DOUBLE_COMPLEX MPI_DATATYPE_NULL
-#define MPI_CXX_LONG_DOUBLE_COMPLEX MPI_DATATYPE_NULL
 #define MPI_REAL2 MPI_DATATYPE_NULL
 #define MPI_COMPLEX4 MPI_DATATYPE_NULL
 
@@ -308,6 +304,10 @@ extern SMPI_Datatype smpi_MPI_INTEGER4;
 extern SMPI_Datatype smpi_MPI_INTEGER8;
 extern SMPI_Datatype smpi_MPI_INTEGER16;
 extern SMPI_Datatype smpi_MPI_COUNT;
+extern SMPI_Datatype smpi_MPI_CXX_BOOL;
+extern SMPI_Datatype smpi_MPI_MPI_CXX_FLOAT_COMPLEX;
+extern SMPI_Datatype smpi_MPI_MPI_CXX_DOULE_COMPLEX;
+extern SMPI_Datatype smpi_MPI_MPI_CXX_LONG_DOUBLE_COMPLEX;
 
 #define MPI_DATATYPE_NULL SMPI_PREDEFINED_POINTER(MPI_Datatype, smpi_MPI_DATATYPE_NULL)
 #define MPI_CHAR SMPI_PREDEFINED_POINTER(MPI_Datatype, smpi_MPI_CHAR)
@@ -368,6 +368,18 @@ extern SMPI_Datatype smpi_MPI_COUNT;
 #define MPI_INTEGER8 SMPI_PREDEFINED_POINTER(MPI_Datatype, smpi_MPI_INTEGER8)
 #define MPI_INTEGER16 SMPI_PREDEFINED_POINTER(MPI_Datatype, smpi_MPI_INTEGER16)
 #define MPI_COUNT SMPI_PREDEFINED_POINTER(MPI_Datatype, smpi_MPI_COUNT)
+
+#if defined(c_plusplus) || defined(__cplusplus)
+#define MPI_CXX_BOOL SMPI_PREDEFINED_POINTER(MPI_Datatype, smpi_MPI_CXX_BOOL)
+#define MPI_CXX_FLOAT_COMPLEX SMPI_PREDEFINED_POINTER(MPI_Datatype, smpi_MPI_CXX_FLOAT_COMPLEX)
+#define MPI_CXX_DOUBLE_COMPLEX SMPI_PREDEFINED_POINTER(MPI_Datatype, smpi_MPI_CXX_DOUBLE_COMPLEX)
+#define MPI_CXX_LONG_DOUBLE_COMPLEX SMPI_PREDEFINED_POINTER(MPI_Datatype, smpi_MPI_CXX_LONG_DOUBLE_COMPLEX)
+#else
+#define MPI_CXX_BOOL MPI_DATATYPE_NULL
+#define MPI_CXX_FLOAT_COMPLEX MPI_DATATYPE_NULL
+#define MPI_CXX_DOUBLE_COMPLEX MPI_DATATYPE_NULL
+#define MPI_CXX_LONG_DOUBLE_COMPLEX MPI_DATATYPE_NULL
+#endif
 
 //defines for fortran compatibility
 #if defined(__alpha__) || defined(__sparc64__) || defined(__x86_64__) || defined(__ia64__) || defined(__aarch64__)
@@ -1204,9 +1216,9 @@ XBT_PUBLIC int smpi_main(const char* program, int argc, char* argv[]);
 
 /* Trace replay specific stuff */
 XBT_PUBLIC void smpi_replay_init(const char* instance_id, int rank, double start_delay_flops); // Only initialization
-XBT_PUBLIC void smpi_replay_main(int rank, const char* trace_filename); // Launch the replay once init is done
+XBT_PUBLIC void smpi_replay_main(int rank, const char* private_trace_filename); // Launch the replay once init is done
 XBT_PUBLIC void smpi_replay_run(const char* instance_id, int rank, double start_delay_flops,
-                                const char* trace_filename); // Both init and start
+                                const char* private_trace_filename); // Both init and start
 
 XBT_PUBLIC void SMPI_app_instance_register(const char* name, xbt_main_func_t code, int num_processes);
 XBT_PUBLIC void SMPI_init();

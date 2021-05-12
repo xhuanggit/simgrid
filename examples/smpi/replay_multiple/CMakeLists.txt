@@ -1,7 +1,7 @@
 if(enable_smpi)
   include_directories(BEFORE "${CMAKE_HOME_DIRECTORY}/include/smpi")
 
-  add_executable       (replay_multiple EXCLUDE_FROM_ALL replay_multiple.c)
+  add_executable       (replay_multiple EXCLUDE_FROM_ALL replay_multiple.cpp)
   target_link_libraries(replay_multiple simgrid)
   ADD_TESH(smpi-replay-multiple --setenv srcdir=${CMAKE_CURRENT_SOURCE_DIR} --setenv bindir=${CMAKE_CURRENT_BINARY_DIR} --cd ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/replay_multiple.tesh)
   add_dependencies(tests replay_multiple)
@@ -44,4 +44,4 @@ set(txt_files     ${txt_files}     ${CMAKE_CURRENT_SOURCE_DIR}/generate_multiple
                                    ${CMAKE_CURRENT_SOURCE_DIR}/ti_traces_32_1/ti_trace30.txt
                                    ${CMAKE_CURRENT_SOURCE_DIR}/ti_traces_32_1/ti_trace31.txt  PARENT_SCOPE)
 set(tesh_files    ${tesh_files}    ${CMAKE_CURRENT_SOURCE_DIR}/replay_multiple.tesh           PARENT_SCOPE)
-set(examples_src  ${examples_src}  ${CMAKE_CURRENT_SOURCE_DIR}/replay_multiple.c              PARENT_SCOPE)
+set(examples_src  ${examples_src}  ${CMAKE_CURRENT_SOURCE_DIR}/replay_multiple.cpp            PARENT_SCOPE)

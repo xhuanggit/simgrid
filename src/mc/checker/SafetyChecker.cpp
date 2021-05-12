@@ -3,16 +3,7 @@
 /* This program is free software; you can redistribute it and/or modify it
  * under the terms of the license (GNU LGPL) which comes with this package. */
 
-#include <cassert>
-#include <cstdio>
-
-#include <memory>
-#include <string>
-#include <vector>
-
-#include <xbt/log.h>
-#include <xbt/sysdep.h>
-
+#include "src/mc/Session.hpp"
 #include "src/mc/Transition.hpp"
 #include "src/mc/VisitedState.hpp"
 #include "src/mc/checker/SafetyChecker.hpp"
@@ -20,9 +11,17 @@
 #include "src/mc/mc_exit.hpp"
 #include "src/mc/mc_private.hpp"
 #include "src/mc/mc_record.hpp"
-#include "src/mc/mc_request.hpp"
 
 #include "src/xbt/mmalloc/mmprivate.h"
+#include "xbt/log.h"
+#include "xbt/sysdep.h"
+
+#include <cassert>
+#include <cstdio>
+
+#include <memory>
+#include <string>
+#include <vector>
 
 using api = simgrid::mc::Api;
 
@@ -40,8 +39,7 @@ void SafetyChecker::check_non_termination(const State* current_state)
       XBT_INFO("*** NON-PROGRESSIVE CYCLE DETECTED ***");
       XBT_INFO("******************************************");
       XBT_INFO("Counter-example execution trace:");
-      auto checker = api::get().mc_get_checker();
-      for (auto const& s : checker->get_textual_trace())
+      for (auto const& s : get_textual_trace())
         XBT_INFO("  %s", s.c_str());
       api::get().dump_record_path();
       api::get().log_state();
@@ -114,6 +112,7 @@ void SafetyChecker::run()
     if (req == nullptr) {
       XBT_DEBUG("There are no more processes to interleave. (depth %zu)", stack_.size() + 1);
 
+//      mc_model_checker->finalize_app();
       this->backtrack();
       continue;
     }
@@ -148,7 +147,7 @@ void SafetyChecker::run()
       auto actors = api::get().get_actors(); 
       for (auto& remoteActor : actors) {
         auto actor = remoteActor.copy.get_buffer();
-        if (api::get().actor_is_enabled(actor->get_pid())) {
+        if (get_session().actor_is_enabled(actor->get_pid())) {
           next_state->mark_todo(actor);
           if (reductionMode_ == ReductionMode::dpor)
             break; // With DPOR, we take the first enabled transition
@@ -240,8 +239,7 @@ void SafetyChecker::restore_state()
     return;
   }
 
-  /* Restore the initial state */
-  api::get().restore_initial_state();
+  get_session().restore_initial_state();
 
   /* Traverse the stack from the state at position start and re-execute the transitions */
   for (std::unique_ptr<State> const& state : stack_) {
@@ -254,7 +252,7 @@ void SafetyChecker::restore_state()
   }
 }
 
-SafetyChecker::SafetyChecker() : Checker()
+SafetyChecker::SafetyChecker(Session* session) : Checker(session)
 {
   reductionMode_ = reduction_mode;
   if (_sg_mc_termination)
@@ -268,8 +266,8 @@ SafetyChecker::SafetyChecker() : Checker()
     XBT_INFO("Check a safety property. Reduction is: %s.",
              (reductionMode_ == ReductionMode::none ? "none"
                                                     : (reductionMode_ == ReductionMode::dpor ? "dpor" : "unknown")));
-  
-  api::get().session_initialize();  
+
+  get_session().take_initial_snapshot();
 
   XBT_DEBUG("Starting the safety algorithm");
 
@@ -282,7 +280,7 @@ SafetyChecker::SafetyChecker() : Checker()
   /* Get an enabled actor and insert it in the interleave set of the initial state */
   auto actors = api::get().get_actors();
   for (auto& actor : actors)
-    if (api::get().actor_is_enabled(actor.copy.get_buffer()->get_pid())) {
+    if (get_session().actor_is_enabled(actor.copy.get_buffer()->get_pid())) {
       initial_state->mark_todo(actor.copy.get_buffer());
       if (reductionMode_ != ReductionMode::none)
         break;
@@ -291,9 +289,9 @@ SafetyChecker::SafetyChecker() : Checker()
   stack_.push_back(std::move(initial_state));
 }
 
-Checker* createSafetyChecker()
+Checker* createSafetyChecker(Session* session)
 {
-  return new SafetyChecker();
+  return new SafetyChecker(session);
 }
 
 } // namespace mc

@@ -3,7 +3,7 @@
 /* This program is free software; you can redistribute it and/or modify it
  * under the terms of the license (GNU LGPL) which comes with this package. */
 
-#include "src/mc/checker/SimcallObserver.hpp"
+#include "src/kernel/actor/SimcallObserver.hpp"
 #include "simgrid/s4u/Host.hpp"
 #include "src/kernel/activity/MutexImpl.hpp"
 #include "src/kernel/actor/ActorImpl.hpp"
@@ -11,7 +11,8 @@
 XBT_LOG_NEW_DEFAULT_SUBCATEGORY(mc_observer, mc, "Logging specific to MC simcall observation");
 
 namespace simgrid {
-namespace mc {
+namespace kernel {
+namespace actor {
 
 std::string SimcallObserver::to_string(int /*time_considered*/) const
 {
@@ -75,5 +76,62 @@ bool MutexLockSimcall::is_enabled() const
 {
   return not blocking_ || mutex_->get_owner() == nullptr || mutex_->get_owner() == get_issuer();
 }
-} // namespace mc
+
+std::string ConditionWaitSimcall::to_string(int time_considered) const
+{
+  std::string res = SimcallObserver::to_string(time_considered) + "Condition WAIT";
+  res += "(" + (timeout_ == -1.0 ? "" : std::to_string(timeout_)) + ")";
+  return res;
+}
+
+std::string ConditionWaitSimcall::dot_label() const
+{
+  return SimcallObserver::dot_label() + "Condition WAIT";
+}
+
+bool ConditionWaitSimcall::is_enabled() const
+{
+  static bool warned = false;
+  if (not warned) {
+    XBT_INFO("Using condition variables in model-checked code is still experimental. Use at your own risk");
+    warned = true;
+  }
+  return true;
+}
+
+std::string SemAcquireSimcall::to_string(int time_considered) const
+{
+  std::string res = SimcallObserver::to_string(time_considered) + "Sem ACQUIRE";
+  res += "(" + (timeout_ == -1.0 ? "" : std::to_string(timeout_)) + ")";
+  return res;
+}
+
+std::string SemAcquireSimcall::dot_label() const
+{
+  return SimcallObserver::dot_label() + "Sem ACQUIRE";
+}
+
+bool SemAcquireSimcall::is_enabled() const
+{
+  static bool warned = false;
+  if (not warned) {
+    XBT_INFO("Using semaphore in model-checked code is still experimental. Use at your own risk");
+    warned = true;
+  }
+  return true;
+}
+
+std::string ExecutionWaitanySimcall::to_string(int time_considered) const
+{
+  std::string res = SimcallObserver::to_string(time_considered) + "Execution WAITANY";
+  res += "(" + (timeout_ == -1.0 ? "" : std::to_string(timeout_)) + ")";
+  return res;
+}
+
+std::string ExecutionWaitanySimcall::dot_label() const
+{
+  return SimcallObserver::dot_label() + "Execution WAITANY";
+}
+} // namespace actor
+} // namespace kernel
 } // namespace simgrid

@@ -10,6 +10,7 @@ set(EXTRA_DIST
   src/include/xbt/coverage.h
   src/include/xbt/parmap.hpp
   src/include/xbt/mmalloc.h
+  src/include/xbt/xbt_modinter.h
   src/include/catch.hpp
   src/include/xxhash.hpp
   src/mc/mc_mmu.hpp
@@ -290,7 +291,6 @@ set(XBT_SRC
   src/xbt/xbt_replay.cpp
   src/xbt/xbt_str.cpp
   src/xbt/xbt_virtu.cpp
-  src/xbt_modinter.h
   )
 
 if(HAVE_MMALLOC)
@@ -309,7 +309,6 @@ set(SURF_SRC
 
   src/kernel/resource/Action.cpp
   src/kernel/resource/Model.cpp
-  src/kernel/resource/Resource.cpp
   src/kernel/resource/DiskImpl.cpp
   src/kernel/resource/DiskImpl.hpp
 
@@ -417,6 +416,8 @@ set(SIMIX_SRC
   src/kernel/activity/SynchroRaw.hpp
   src/kernel/actor/ActorImpl.cpp
   src/kernel/actor/ActorImpl.hpp
+  src/kernel/actor/SimcallObserver.cpp
+  src/kernel/actor/SimcallObserver.hpp
 
   ${SIMIX_GENERATED_SRC}
   )
@@ -580,8 +581,6 @@ set(MC_SRC_BASE
   src/mc/mc_config.cpp
   src/mc/mc_config.hpp
   src/mc/mc_global.cpp
-  src/mc/checker/SimcallObserver.cpp
-  src/mc/checker/SimcallObserver.hpp
   )
 
 set(MC_SRC
@@ -620,8 +619,8 @@ set(MC_SRC
   src/mc/remote/Channel.hpp
   src/mc/remote/CheckerSide.cpp
   src/mc/remote/CheckerSide.hpp
-  src/mc/remote/RemoteSimulation.hpp
-  src/mc/remote/RemoteSimulation.cpp
+  src/mc/remote/RemoteProcess.hpp
+  src/mc/remote/RemoteProcess.cpp
   src/mc/remote/RemotePtr.hpp
   src/mc/remote/mc_protocol.h
 
@@ -650,8 +649,6 @@ set(MC_SRC
   src/mc/mc_ignore.hpp
   src/mc/mc_record.cpp
   src/mc/mc_private.hpp
-  src/mc/mc_request.hpp
-  src/mc/mc_request.cpp
   src/mc/mc_safety.hpp
   src/mc/mc_state.hpp
   src/mc/mc_state.cpp
@@ -688,7 +685,6 @@ set(headers_to_install
   include/simgrid/forward.h
   include/simgrid/simix.h
   include/simgrid/simix.hpp
-  include/simgrid/simix/blocking_simcall.hpp
   include/simgrid/kernel/future.hpp
   include/simgrid/disk.h
   include/simgrid/host.h
@@ -843,9 +839,6 @@ else()
 endif()
 
 set(DOC_SOURCES
-  doc/Doxyfile.in
-  doc/Layout.xml
-
   doc/doxygen/FAQ.doc
   doc/doxygen/inside.doc
   doc/doxygen/inside_tests.doc
@@ -969,9 +962,6 @@ set(DOC_IMG
   ${CMAKE_HOME_DIRECTORY}/doc/webcruft/Paje_MSG_screenshot.jpg
   ${CMAKE_HOME_DIRECTORY}/doc/webcruft/Paje_MSG_screenshot_thn.jpg
   ${CMAKE_HOME_DIRECTORY}/doc/webcruft/output.goal.pdf
-  ${CMAKE_HOME_DIRECTORY}/doc/webcruft/simgrid_logo_2011.gif
-  ${CMAKE_HOME_DIRECTORY}/doc/webcruft/simgrid_logo_2011.png
-  ${CMAKE_HOME_DIRECTORY}/doc/webcruft/simgrid_logo_2011_small.png
   )
 
 set(bin_files

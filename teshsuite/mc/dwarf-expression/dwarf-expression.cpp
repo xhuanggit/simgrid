@@ -12,15 +12,18 @@
 #include "src/mc/inspect/ObjectInformation.hpp"
 #include "src/mc/inspect/Type.hpp"
 #include "src/mc/inspect/Variable.hpp"
-#include "src/mc/remote/RemoteSimulation.hpp"
+#include "src/mc/remote/RemoteProcess.hpp"
 
 #include <array>
 #include <cassert>
 #include <cstdlib>
-#include <cstring>
-#include <random>
+#include <limits>
+#include <xbt/random.hpp>
 
-static std::default_random_engine rnd_engine;
+static uintptr_t rnd_engine()
+{
+  return simgrid::xbt::random::uniform_int(std::numeric_limits<int>::min(), std::numeric_limits<int>::max());
+}
 
 static uintptr_t eval_binary_operation(simgrid::dwarf::ExpressionContext const& state, uint8_t op, uintptr_t a,
                                        uintptr_t b)
@@ -145,8 +148,8 @@ static void test_deref(simgrid::dwarf::ExpressionContext const& state)
 
 int main()
 {
-  auto* process = new simgrid::mc::RemoteSimulation(getpid());
-  process->init();
+  auto* process = new simgrid::mc::RemoteProcess(getpid());
+  process->init(nullptr, nullptr, nullptr, nullptr);
 
   simgrid::dwarf::ExpressionContext state;
   state.address_space = (simgrid::mc::AddressSpace*) process;

@@ -7,7 +7,7 @@
 #include "mc/mc.h"
 #include "src/kernel/activity/CommImpl.hpp"
 #include "src/kernel/activity/MutexImpl.hpp"
-#include "src/mc/checker/SimcallObserver.hpp"
+#include "src/kernel/actor/SimcallObserver.hpp"
 #include "src/mc/mc_config.hpp"
 #include "src/mc/mc_replay.hpp"
 #include "src/simix/smx_private.hpp"
@@ -17,7 +17,7 @@
 #if SIMGRID_HAVE_MC
 #include "src/mc/ModelChecker.hpp"
 #include "src/mc/Session.hpp"
-#include "src/mc/remote/RemoteSimulation.hpp"
+#include "src/mc/remote/RemoteProcess.hpp"
 
 using simgrid::mc::remote;
 #endif
@@ -33,14 +33,14 @@ int MC_random(int min, int max)
     static simgrid::xbt::random::XbtRandom prng;
     return prng.uniform_int(min, max);
   }
-  simgrid::mc::RandomSimcall observer{SIMIX_process_self(), min, max};
+  simgrid::kernel::actor::RandomSimcall observer{SIMIX_process_self(), min, max};
   return simgrid::kernel::actor::simcall([&observer] { return observer.get_value(); }, &observer);
 }
 
 namespace simgrid {
 namespace mc {
 
-void wait_for_requests()
+void execute_actors()
 {
 #if SIMGRID_HAVE_MC
   xbt_assert(mc_model_checker == nullptr, "This must be called from the client");
@@ -82,7 +82,7 @@ bool actor_is_enabled(smx_actor_t actor)
 #if SIMGRID_HAVE_MC
   // If in the MCer, ask the client app since it has all the data
   if (mc_model_checker != nullptr) {
-    return simgrid::mc::session->actor_is_enabled(actor->get_pid());
+    return simgrid::mc::session_singleton->actor_is_enabled(actor->get_pid());
   }
 #endif
 // #
@@ -123,22 +123,6 @@ bool actor_is_enabled(smx_actor_t actor)
           return true;
       }
       return false;
-    }
-
-    case Simcall::SEM_ACQUIRE: {
-      static bool warned = false;
-      if (not warned)
-        XBT_INFO("Using semaphore in model-checked code is still experimental. Use at your own risk");
-      warned = true;
-      return true;
-    }
-
-    case Simcall::COND_WAIT: {
-      static bool warned = false;
-      if (not warned)
-        XBT_INFO("Using condition variables in model-checked code is still experimental. Use at your own risk");
-      warned = true;
-      return true;
     }
 
     default:

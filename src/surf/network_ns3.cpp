@@ -260,9 +260,8 @@ static void routeCreation_cb(bool symmetrical, simgrid::kernel::routing::NetPoin
  *********/
 void surf_network_model_init_NS3()
 {
-  auto net_model = std::make_shared<simgrid::kernel::resource::NetworkNS3Model>();
-  simgrid::kernel::EngineImpl::get_instance()->add_model(simgrid::kernel::resource::Model::Type::NETWORK, net_model,
-                                                         true);
+  auto net_model = std::make_shared<simgrid::kernel::resource::NetworkNS3Model>("NS3 network model");
+  simgrid::kernel::EngineImpl::get_instance()->add_model(net_model);
   simgrid::s4u::Engine::get_instance()->get_netzone_root()->get_impl()->set_network_model(net_model);
 }
 
@@ -290,7 +289,7 @@ namespace simgrid {
 namespace kernel {
 namespace resource {
 
-NetworkNS3Model::NetworkNS3Model() : NetworkModel(Model::UpdateAlgo::FULL)
+NetworkNS3Model::NetworkNS3Model(const std::string& name) : NetworkModel(name)
 {
   xbt_assert(not sg_link_energy_is_inited(),
              "LinkEnergy plugin and ns-3 network models are not compatible. Are you looking for Ecofen, maybe?");
@@ -447,15 +446,24 @@ void LinkNS3::apply_event(profile::Event*, double)
 {
   THROW_UNIMPLEMENTED;
 }
-void LinkNS3::set_bandwidth_profile(profile::Profile*)
+
+LinkImpl* LinkNS3::set_bandwidth_profile(profile::Profile* profile)
 {
-  xbt_die("The ns-3 network model doesn't support bandwidth profiles");
-}
-void LinkNS3::set_latency_profile(profile::Profile*)
-{
-  xbt_die("The ns-3 network model doesn't support latency profiles");
+  xbt_assert(profile == nullptr, "The ns-3 network model doesn't support bandwidth profiles");
+  return this;
 }
 
+LinkImpl* LinkNS3::set_latency_profile(profile::Profile* profile)
+{
+  xbt_assert(profile == nullptr, "The ns-3 network model doesn't support latency profiles");
+  return this;
+}
+
+LinkImpl* LinkNS3::set_latency(double latency)
+{
+  latency_.peak = latency;
+  return this;
+}
 /**********
  * Action *
  **********/

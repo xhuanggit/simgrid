@@ -5,7 +5,7 @@
 
 #define _FILE_OFFSET_BITS 64 /* needed for pread_whole to work as expected on 32bits */
 
-#include "src/mc/remote/RemoteSimulation.hpp"
+#include "src/mc/remote/RemoteProcess.hpp"
 
 #include "src/mc/sosp/Snapshot.hpp"
 #include "xbt/file.hpp"
@@ -19,6 +19,7 @@
 #include <cerrno>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <string>
 
 using simgrid::mc::remote;
@@ -206,45 +207,29 @@ static ssize_t pwrite_whole(int fd, const void* buf, size_t count, off_t offset)
   return real_count;
 }
 
-static pthread_once_t zero_buffer_flag = PTHREAD_ONCE_INIT;
-static const void* zero_buffer;
-static const size_t zero_buffer_size = 10 * 4096;
-
-static void zero_buffer_init()
-{
-  int fd = open("/dev/zero", O_RDONLY);
-  if (fd < 0)
-    xbt_die("Could not open /dev/zero");
-  zero_buffer = mmap(nullptr, zero_buffer_size, PROT_READ, MAP_SHARED, fd, 0);
-  if (zero_buffer == MAP_FAILED)
-    xbt_die("Could not map the zero buffer");
-  close(fd);
-}
-
 int open_vm(pid_t pid, int flags)
 {
   std::string buffer = "/proc/" + std::to_string(pid) + "/mem";
   return open(buffer.c_str(), flags);
 }
 
-// ***** RemoteSimulation
+// ***** RemoteProcess
 
-RemoteSimulation::RemoteSimulation(pid_t pid) : AddressSpace(this), pid_(pid), running_(true) {}
+RemoteProcess::RemoteProcess(pid_t pid) : AddressSpace(this), pid_(pid), running_(true) {}
 
-void RemoteSimulation::init()
+void RemoteProcess::init(void* mmalloc_default_mdp, void* maxpid, void* actors, void* dead_actors)
 {
+  this->heap_address      = mmalloc_default_mdp;
+  this->maxpid_addr_      = maxpid;
+  this->actors_addr_      = actors;
+  this->dead_actors_addr_ = dead_actors;
+
   this->memory_map_ = simgrid::xbt::get_memory_map(this->pid_);
   this->init_memory_map_info();
 
   int fd = open_vm(this->pid_, O_RDWR);
   xbt_assert(fd >= 0, "Could not open file for process virtual address space");
   this->memory_file = fd;
-
-  // Read std_heap (is a struct mdesc*):
-  const simgrid::mc::Variable* std_heap_var = this->find_variable("__mmalloc_default_mdp");
-  xbt_assert(std_heap_var, "No heap information in the target process");
-  xbt_assert(std_heap_var->address, "No constant address for this variable");
-  this->read_bytes(&this->heap_address, sizeof(mdesc*), remote(std_heap_var->address));
 
   this->smx_actors_infos.clear();
   this->smx_dead_actors_infos.clear();
@@ -253,7 +238,7 @@ void RemoteSimulation::init()
   this->unw_underlying_context    = simgrid::unw::create_context(this->unw_underlying_addr_space, this->pid_);
 }
 
-RemoteSimulation::~RemoteSimulation()
+RemoteProcess::~RemoteProcess()
 {
   if (this->memory_file >= 0)
     close(this->memory_file);
@@ -273,13 +258,13 @@ RemoteSimulation::~RemoteSimulation()
  *  Do not use directly, this is used by the getters when appropriate
  *  in order to have fresh data.
  */
-void RemoteSimulation::refresh_heap()
+void RemoteProcess::refresh_heap()
 {
   // Read/dereference/refresh the std_heap pointer:
   if (not this->heap)
     this->heap = std::make_unique<s_xbt_mheap_t>();
   this->read_bytes(this->heap.get(), sizeof(mdesc), remote(this->heap_address));
-  this->cache_flags_ |= RemoteSimulation::cache_heap;
+  this->cache_flags_ |= RemoteProcess::cache_heap;
 }
 
 /** Refresh the information about the process
@@ -287,26 +272,26 @@ void RemoteSimulation::refresh_heap()
  *  Do not use directly, this is used by the getters when appropriate
  *  in order to have fresh data.
  * */
-void RemoteSimulation::refresh_malloc_info()
+void RemoteProcess::refresh_malloc_info()
 {
   // Refresh process->heapinfo:
-  if (this->cache_flags_ & RemoteSimulation::cache_malloc)
+  if (this->cache_flags_ & RemoteProcess::cache_malloc)
     return;
   size_t count = this->heap->heaplimit + 1;
   if (this->heap_info.size() < count)
     this->heap_info.resize(count);
   this->read_bytes(this->heap_info.data(), count * sizeof(malloc_info), remote(this->heap->heapinfo));
-  this->cache_flags_ |= RemoteSimulation::cache_malloc;
+  this->cache_flags_ |= RemoteProcess::cache_malloc;
 }
 
 /** @brief Finds the range of the different memory segments and binary paths */
-void RemoteSimulation::init_memory_map_info()
+void RemoteProcess::init_memory_map_info()
 {
   XBT_DEBUG("Get debug information ...");
   this->maestro_stack_start_ = nullptr;
   this->maestro_stack_end_   = nullptr;
   this->object_infos.resize(0);
-  this->binary_info     = nullptr;
+  this->binary_info = nullptr;
 
   std::vector<simgrid::xbt::VmMap> const& maps = this->memory_map_;
 
@@ -357,17 +342,13 @@ void RemoteSimulation::init_memory_map_info()
       this->binary_info = info;
   }
 
-  // Resolve time (including across different objects):
-  for (auto const& object_info : this->object_infos)
-    postProcessObjectInformation(this, object_info.get());
-
   xbt_assert(this->maestro_stack_start_, "Did not find maestro_stack_start");
   xbt_assert(this->maestro_stack_end_, "Did not find maestro_stack_end");
 
   XBT_DEBUG("Get debug information done !");
 }
 
-std::shared_ptr<simgrid::mc::ObjectInformation> RemoteSimulation::find_object_info(RemotePtr<void> addr) const
+std::shared_ptr<simgrid::mc::ObjectInformation> RemoteProcess::find_object_info(RemotePtr<void> addr) const
 {
   for (auto const& object_info : this->object_infos)
     if (addr.address() >= (std::uint64_t)object_info->start && addr.address() <= (std::uint64_t)object_info->end)
@@ -375,7 +356,7 @@ std::shared_ptr<simgrid::mc::ObjectInformation> RemoteSimulation::find_object_in
   return nullptr;
 }
 
-std::shared_ptr<ObjectInformation> RemoteSimulation::find_object_info_exec(RemotePtr<void> addr) const
+std::shared_ptr<ObjectInformation> RemoteProcess::find_object_info_exec(RemotePtr<void> addr) const
 {
   for (std::shared_ptr<ObjectInformation> const& info : this->object_infos)
     if (addr.address() >= (std::uint64_t)info->start_exec && addr.address() <= (std::uint64_t)info->end_exec)
@@ -383,7 +364,7 @@ std::shared_ptr<ObjectInformation> RemoteSimulation::find_object_info_exec(Remot
   return nullptr;
 }
 
-std::shared_ptr<ObjectInformation> RemoteSimulation::find_object_info_rw(RemotePtr<void> addr) const
+std::shared_ptr<ObjectInformation> RemoteProcess::find_object_info_rw(RemotePtr<void> addr) const
 {
   for (std::shared_ptr<ObjectInformation> const& info : this->object_infos)
     if (addr.address() >= (std::uint64_t)info->start_rw && addr.address() <= (std::uint64_t)info->end_rw)
@@ -391,7 +372,7 @@ std::shared_ptr<ObjectInformation> RemoteSimulation::find_object_info_rw(RemoteP
   return nullptr;
 }
 
-simgrid::mc::Frame* RemoteSimulation::find_function(RemotePtr<void> ip) const
+simgrid::mc::Frame* RemoteProcess::find_function(RemotePtr<void> ip) const
 {
   std::shared_ptr<simgrid::mc::ObjectInformation> info = this->find_object_info_exec(ip);
   return info ? info->find_function((void*)ip.address()) : nullptr;
@@ -399,7 +380,7 @@ simgrid::mc::Frame* RemoteSimulation::find_function(RemotePtr<void> ip) const
 
 /** Find (one occurrence of) the named variable definition
  */
-const simgrid::mc::Variable* RemoteSimulation::find_variable(const char* name) const
+const simgrid::mc::Variable* RemoteProcess::find_variable(const char* name) const
 {
   // First lookup the variable in the executable shared object.
   // A global variable used directly by the executable code from a library
@@ -421,18 +402,23 @@ const simgrid::mc::Variable* RemoteSimulation::find_variable(const char* name) c
   return nullptr;
 }
 
-void RemoteSimulation::read_variable(const char* name, void* target, size_t size) const
+void RemoteProcess::read_variable(const char* name, void* target, size_t size) const
 {
   const simgrid::mc::Variable* var = this->find_variable(name);
   xbt_assert(var, "Variable %s not found", name);
   xbt_assert(var->address, "No simple location for this variable");
-  xbt_assert(var->type->full_type, "Partial type for %s, cannot check size", name);
-  xbt_assert((size_t)var->type->full_type->byte_size == size, "Unexpected size for %s (expected %zu, was %zu)", name,
-             size, (size_t)var->type->full_type->byte_size);
+
+  if (not var->type->full_type) // Try to resolve this type. The needed ObjectInfo was maybe (lazily) loaded recently
+    for (auto const& object_info : this->object_infos)
+      postProcessObjectInformation(this, object_info.get());
+  xbt_assert(var->type->full_type, "Partial type for %s (even after re-resolving types), cannot retrieve its size.",
+             name);
+  xbt_assert((size_t)var->type->full_type->byte_size == size, "Unexpected size for %s (expected %zu, received %zu).",
+             name, size, (size_t)var->type->full_type->byte_size);
   this->read_bytes(target, size, remote(var->address));
 }
 
-std::string RemoteSimulation::read_string(RemotePtr<char> address) const
+std::string RemoteProcess::read_string(RemotePtr<char> address) const
 {
   if (not address)
     return {};
@@ -456,8 +442,7 @@ std::string RemoteSimulation::read_string(RemotePtr<char> address) const
   }
 }
 
-void* RemoteSimulation::read_bytes(void* buffer, std::size_t size, RemotePtr<void> address,
-                                   ReadOptions /*options*/) const
+void* RemoteProcess::read_bytes(void* buffer, std::size_t size, RemotePtr<void> address, ReadOptions /*options*/) const
 {
   if (pread_whole(this->memory_file, buffer, size, (size_t)address.address()) < 0)
     xbt_die("Read at %p from process %lli failed", (void*)address.address(), (long long)this->pid_);
@@ -470,15 +455,28 @@ void* RemoteSimulation::read_bytes(void* buffer, std::size_t size, RemotePtr<voi
  *  @param len      data size
  *  @param address  target process memory address (target)
  */
-void RemoteSimulation::write_bytes(const void* buffer, size_t len, RemotePtr<void> address) const
+void RemoteProcess::write_bytes(const void* buffer, size_t len, RemotePtr<void> address) const
 {
   if (pwrite_whole(this->memory_file, buffer, len, (size_t)address.address()) < 0)
     xbt_die("Write to process %lli failed", (long long)this->pid_);
 }
 
-void RemoteSimulation::clear_bytes(RemotePtr<void> address, size_t len) const
+static void zero_buffer_init(const void** zero_buffer, size_t zero_buffer_size)
 {
-  pthread_once(&zero_buffer_flag, zero_buffer_init);
+  int fd = open("/dev/zero", O_RDONLY);
+  xbt_assert(fd >= 0, "Could not open /dev/zero");
+  *zero_buffer = mmap(nullptr, zero_buffer_size, PROT_READ, MAP_SHARED, fd, 0);
+  xbt_assert(*zero_buffer != MAP_FAILED, "Could not map the zero buffer");
+  close(fd);
+}
+
+void RemoteProcess::clear_bytes(RemotePtr<void> address, size_t len) const
+{
+  static constexpr size_t zero_buffer_size = 10 * 4096;
+  static const void* zero_buffer;
+  static std::once_flag zero_buffer_flag;
+
+  std::call_once(zero_buffer_flag, zero_buffer_init, &zero_buffer, zero_buffer_size);
   while (len) {
     size_t s = len > zero_buffer_size ? zero_buffer_size : len;
     this->write_bytes(zero_buffer, s, address);
@@ -487,7 +485,7 @@ void RemoteSimulation::clear_bytes(RemotePtr<void> address, size_t len) const
   }
 }
 
-void RemoteSimulation::ignore_region(std::uint64_t addr, std::size_t size)
+void RemoteProcess::ignore_region(std::uint64_t addr, std::size_t size)
 {
   IgnoredRegion region;
   region.addr = addr;
@@ -501,7 +499,7 @@ void RemoteSimulation::ignore_region(std::uint64_t addr, std::size_t size)
     ignored_regions_.insert(pos, region);
 }
 
-void RemoteSimulation::ignore_heap(IgnoredHeapRegion const& region)
+void RemoteProcess::ignore_heap(IgnoredHeapRegion const& region)
 {
   // Binary search the position of insertion:
   auto pos = std::lower_bound(ignored_heap_.begin(), ignored_heap_.end(), region.address,
@@ -512,7 +510,7 @@ void RemoteSimulation::ignore_heap(IgnoredHeapRegion const& region)
   }
 }
 
-void RemoteSimulation::unignore_heap(void* address, size_t size)
+void RemoteProcess::unignore_heap(void* address, size_t size)
 {
   // Binary search:
   auto pos = std::lower_bound(ignored_heap_.begin(), ignored_heap_.end(), address,
@@ -521,7 +519,7 @@ void RemoteSimulation::unignore_heap(void* address, size_t size)
     ignored_heap_.erase(pos);
 }
 
-void RemoteSimulation::ignore_local_variable(const char* var_name, const char* frame_name) const
+void RemoteProcess::ignore_local_variable(const char* var_name, const char* frame_name) const
 {
   if (frame_name != nullptr && strcmp(frame_name, "*") == 0)
     frame_name = nullptr;
@@ -529,19 +527,19 @@ void RemoteSimulation::ignore_local_variable(const char* var_name, const char* f
     info->remove_local_variable(var_name, frame_name);
 }
 
-std::vector<simgrid::mc::ActorInformation>& RemoteSimulation::actors()
+std::vector<simgrid::mc::ActorInformation>& RemoteProcess::actors()
 {
   this->refresh_simix();
   return smx_actors_infos;
 }
 
-std::vector<simgrid::mc::ActorInformation>& RemoteSimulation::dead_actors()
+std::vector<simgrid::mc::ActorInformation>& RemoteProcess::dead_actors()
 {
   this->refresh_simix();
   return smx_dead_actors_infos;
 }
 
-void RemoteSimulation::dump_stack() const
+void RemoteProcess::dump_stack() const
 {
   unw_addr_space_t as = unw_create_addr_space(&_UPT_accessors, BYTE_ORDER);
   if (as == nullptr) {
@@ -568,6 +566,19 @@ void RemoteSimulation::dump_stack() const
 
   _UPT_destroy(context);
   unw_destroy_addr_space(as);
+}
+
+unsigned long RemoteProcess::get_maxpid() const
+{
+  unsigned long maxpid;
+  this->read_bytes(&maxpid, sizeof(unsigned long), remote(maxpid_addr_));
+  return maxpid;
+}
+
+void RemoteProcess::get_actor_vectors(RemotePtr<s_xbt_dynar_t>& actors, RemotePtr<s_xbt_dynar_t>& dead_actors)
+{
+  actors      = remote(static_cast<s_xbt_dynar_t*>(actors_addr_));
+  dead_actors = remote(static_cast<s_xbt_dynar_t*>(dead_actors_addr_));
 }
 } // namespace mc
 } // namespace simgrid

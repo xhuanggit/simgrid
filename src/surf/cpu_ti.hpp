@@ -105,7 +105,7 @@ public:
   CpuTi& operator&(const CpuTi&) = delete;
   ~CpuTi() override;
 
-  void set_speed_profile(profile::Profile* profile) override;
+  Cpu* set_speed_profile(profile::Profile* profile) override;
 
   void apply_event(profile::Event* event, double value) override;
   void update_actions_finish_time(double now);
@@ -140,9 +140,9 @@ using CpuTiList = boost::intrusive::list<CpuTi, CpuTiListOptions>;
  *********/
 class CpuTiModel : public CpuModel {
 public:
-  static void create_pm_vm_models(); // Make both models be TI models
+  static void create_pm_models(); // Make CPU PM model
 
-  CpuTiModel();
+  using CpuModel::CpuModel;
   CpuTiModel(const CpuTiModel&) = delete;
   CpuTiModel& operator=(const CpuTiModel&) = delete;
   Cpu* create_cpu(s4u::Host* host, const std::vector<double>& speed_per_pstate) override;

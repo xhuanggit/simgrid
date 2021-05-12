@@ -547,8 +547,9 @@ void Request::start()
     }
 
     size_t payload_size_ = size_ + 16;//MPI enveloppe size (tag+dest+communicator)
-    action_   = simcall_comm_isend(
-        simgrid::s4u::Actor::by_pid(src_)->get_impl(), mailbox->get_impl(), payload_size_, -1.0, buf, real_size_, &match_send,
+    action_              = simcall_comm_isend(
+        simgrid::kernel::actor::ActorImpl::by_pid(src_), mailbox->get_impl(), payload_size_, -1.0, buf, real_size_,
+        &match_send,
         &xbt_free_f, // how to free the userdata if a detached send fails
         process->replaying() ? &smpi_comm_null_copy_buffer_callback : smpi_comm_copy_data_callback, this,
         // detach if msg size < eager/rdv switch limit
@@ -1195,7 +1196,7 @@ int Request::get_status(const Request* req, int* flag, MPI_Status* status)
   *flag=0;
 
   if(req != MPI_REQUEST_NULL && req->action_ != nullptr) {
-    req->iprobe(req->src_, req->tag_, req->comm_, flag, status);
+    req->iprobe(req->comm_->group()->rank(req->src_), req->tag_, req->comm_, flag, status);
     if(*flag)
       return MPI_SUCCESS;
   }

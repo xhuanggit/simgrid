@@ -35,7 +35,7 @@ if(enable_model-checking)
                APPEND PROPERTY INCLUDE_DIRECTORIES "${INTERNAL_INCLUDES}")
   install(TARGETS simgrid-mc # install that binary without breaking the rpath on Mac
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}/)
-  add_dependencies(tests simgrid-mc)
+  add_dependencies(tests-mc simgrid-mc)
 endif()
 
 
@@ -130,7 +130,7 @@ if(enable_smpi)
       SET(SIMGRID_DEP "${SIMGRID_DEP} -lflang")
       if("${CMAKE_SYSTEM}" MATCHES "FreeBSD")
         set(SIMGRID_DEP "${SIMGRID_DEP} -lexecinfo")
-        if ("${CMAKE_SYSTEM_VERSION}" MATCHES "12")
+	if ("${CMAKE_SYSTEM_VERSION}" STRGREATER_EQUAL "12")
             set(SIMGRID_DEP "${SIMGRID_DEP} -lpgmath")
         endif()
         if ("${CMAKE_SYSTEM_VERSION}" MATCHES "12\.1")

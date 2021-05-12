@@ -21,19 +21,12 @@ namespace simgrid {
 namespace kernel {
 namespace routing {
 
-FatTreeZone::FatTreeZone(const std::string& name) : ClusterZone(name)
-{
-  XBT_DEBUG("Creating a new fat tree.");
-}
-
 FatTreeZone::~FatTreeZone()
 {
-  for (FatTreeNode const* node : this->nodes_) {
+  for (FatTreeNode const* node : this->nodes_)
     delete node;
-  }
-  for (FatTreeLink const* link : this->links_) {
+  for (FatTreeLink const* link : this->links_)
     delete link;
-  }
 }
 
 bool FatTreeZone::is_in_sub_tree(FatTreeNode* root, FatTreeNode* node) const
@@ -77,7 +70,7 @@ void FatTreeZone::get_local_route(NetPoint* src, NetPoint* dst, RouteCreationArg
            dst->get_cname(), dst->id());
 
   /* In case destination is the source, and there is a loopback, let's use it instead of going up to a switch */
-  if (source->id == destination->id && this->has_loopback_) {
+  if (source->id == destination->id && has_loopback()) {
     into->link_list.push_back(source->loopback);
     if (latency)
       *latency += source->loopback->get_latency();
@@ -100,7 +93,7 @@ void FatTreeZone::get_local_route(NetPoint* src, NetPoint* dst, RouteCreationArg
     if (latency)
       *latency += currentNode->parents[d]->up_link_->get_latency();
 
-    if (this->has_limiter_)
+    if (has_limiter())
       into->link_list.push_back(currentNode->limiter_link_);
     currentNode = currentNode->parents[d]->up_node_;
   }
@@ -116,7 +109,7 @@ void FatTreeZone::get_local_route(NetPoint* src, NetPoint* dst, RouteCreationArg
         if (latency)
           *latency += currentNode->children[i]->down_link_->get_latency();
         currentNode = currentNode->children[i]->down_node_;
-        if (this->has_limiter_)
+        if (has_limiter())
           into->link_list.push_back(currentNode->limiter_link_);
         XBT_DEBUG("%d(%u,%u) is accessible through %d(%u,%u)", destination->id, destination->level,
                   destination->position, currentNode->id, currentNode->level, currentNode->position);

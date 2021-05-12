@@ -31,20 +31,21 @@ namespace s4u {
 class XBT_PUBLIC Mutex {
   friend ConditionVariable;
   friend kernel::activity::MutexImpl;
+  friend void kernel::activity::intrusive_ptr_release(kernel::activity::MutexImpl* mutex);
 
   kernel::activity::MutexImpl* const pimpl_;
   /* refcounting */
   friend XBT_PUBLIC void intrusive_ptr_add_ref(const Mutex* mutex);
   friend XBT_PUBLIC void intrusive_ptr_release(const Mutex* mutex);
 
-public:
   explicit Mutex(kernel::activity::MutexImpl* mutex) : pimpl_(mutex) {}
-  ~Mutex();
+  ~Mutex() = default;
 #ifndef DOXYGEN
   Mutex(Mutex const&) = delete;            // No copy constructor; Use MutexPtr instead
   Mutex& operator=(Mutex const&) = delete; // No direct assignment either. Use MutexPtr instead
 #endif
 
+public:
   /** Constructs a new mutex */
   static MutexPtr create();
   void lock();

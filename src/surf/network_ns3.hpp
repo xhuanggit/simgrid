@@ -16,7 +16,7 @@ namespace resource {
 
 class NetworkNS3Model : public NetworkModel {
 public:
-  NetworkNS3Model();
+  explicit NetworkNS3Model(const std::string& name);
   LinkImpl* create_link(const std::string& name, const std::vector<double>& bandwidth,
                         s4u::Link::SharingPolicy policy) override;
   Action* communicate(s4u::Host* src, s4u::Host* dst, double size, double rate) override;
@@ -36,9 +36,9 @@ public:
 
   void apply_event(profile::Event* event, double value) override;
   void set_bandwidth(double) override { THROW_UNIMPLEMENTED; }
-  LinkImpl* set_latency(double) override { /* do nothing */ return this; }
-  void set_bandwidth_profile(profile::Profile* profile) override;
-  void set_latency_profile(profile::Profile* profile) override;
+  LinkImpl* set_latency(double) override;
+  LinkImpl* set_bandwidth_profile(profile::Profile* profile) override;
+  LinkImpl* set_latency_profile(profile::Profile* profile) override;
   s4u::Link::SharingPolicy get_sharing_policy() const override { return sharing_policy_; }
 };
 

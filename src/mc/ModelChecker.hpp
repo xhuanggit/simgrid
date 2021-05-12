@@ -25,7 +25,7 @@ class ModelChecker {
   std::set<xbt::string, std::less<>> hostnames_;
   // This is the parent snapshot of the current state:
   PageStore page_store_{500};
-  std::unique_ptr<RemoteSimulation> remote_simulation_;
+  std::unique_ptr<RemoteProcess> remote_process_;
   Checker* checker_ = nullptr;
 
   // Expect MessageType::SIMCALL_TO_STRING or MessageType::SIMCALL_DOT_LABEL
@@ -34,14 +34,11 @@ class ModelChecker {
 public:
   ModelChecker(ModelChecker const&) = delete;
   ModelChecker& operator=(ModelChecker const&) = delete;
-  explicit ModelChecker(std::unique_ptr<RemoteSimulation> remote_simulation, int sockfd);
+  explicit ModelChecker(std::unique_ptr<RemoteProcess> remote_simulation, int sockfd);
 
-  RemoteSimulation& get_remote_simulation() { return *remote_simulation_; }
+  RemoteProcess& get_remote_process() { return *remote_process_; }
   Channel& channel() { return checker_side_.get_channel(); }
-  PageStore& page_store()
-  {
-    return page_store_;
-  }
+  PageStore& page_store() { return page_store_; }
 
   xbt::string const& get_host_name(const char* hostname)
   {
@@ -50,7 +47,7 @@ public:
 
   void start();
   void shutdown();
-  void resume(simgrid::mc::RemoteSimulation& get_remote_simulation);
+  void resume();
   void wait_for_requests();
   void handle_simcall(Transition const& transition);
 
@@ -62,6 +59,7 @@ public:
   XBT_ATTRIB_NORETURN void exit(int status);
 
   bool checkDeadlock();
+  void finalize_app();
 
   Checker* getChecker() const { return checker_; }
   void setChecker(Checker* checker) { checker_ = checker; }

@@ -53,27 +53,18 @@ void EngineImpl::register_default(const actor::ActorCodeFactory& code)
   default_function = code;
 }
 
-void EngineImpl::add_model(resource::Model::Type type, std::shared_ptr<resource::Model> model, bool is_default)
+void EngineImpl::add_model(std::shared_ptr<resource::Model> model, const std::vector<resource::Model*>& dependencies)
 {
-  if (is_default)
-    models_by_type_[type].insert(models_by_type_[type].begin(), model.get());
-  else
-    models_by_type_[type].push_back(model.get());
+  auto model_name = model->get_name();
+  xbt_assert(models_prio_.find(model_name) == models_prio_.end(),
+             "Model %s already exists, use model.set_name() to change its name", model_name.c_str());
 
-  models_.push_back(std::move(model));
-}
-
-resource::Model* EngineImpl::get_default_model(resource::Model::Type type) const
-{
-  resource::Model* model = nullptr;
-  if (models_by_type_.find(type) != models_by_type_.end() and models_by_type_.at(type).size() > 0)
-    return models_by_type_.at(type)[0];
-  return model;
-}
-
-const std::vector<resource::Model*>& EngineImpl::get_model_list(resource::Model::Type type)
-{
-  return models_by_type_[type];
+  for (const auto dep : dependencies) {
+    xbt_assert(models_prio_.find(dep->get_name()) != models_prio_.end(),
+               "Model %s doesn't exists. Impossible to use it as dependency.", dep->get_name().c_str());
+  }
+  models_.push_back(model.get());
+  models_prio_[model_name] = std::move(model);
 }
 
 } // namespace kernel

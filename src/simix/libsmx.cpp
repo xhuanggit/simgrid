@@ -11,14 +11,14 @@
  * under the terms of the license (GNU LGPL) which comes with this package. */
 
 #include "mc/mc.h"
-#include "simgrid/simix/blocking_simcall.hpp"
 #include "src/kernel/activity/CommImpl.hpp"
 #include "src/kernel/activity/ConditionVariableImpl.hpp"
 #include "src/kernel/activity/ExecImpl.hpp"
 #include "src/kernel/activity/IoImpl.hpp"
 #include "src/kernel/activity/MailboxImpl.hpp"
 #include "src/kernel/activity/MutexImpl.hpp"
-#include "src/mc/checker/SimcallObserver.hpp"
+#include "src/kernel/activity/SemaphoreImpl.hpp"
+#include "src/kernel/actor/SimcallObserver.hpp"
 #include "src/mc/mc_replay.hpp"
 #include "src/plugins/vm/VirtualMachineImpl.hpp"
 #include "xbt/random.hpp"
@@ -35,8 +35,7 @@ simgrid::kernel::activity::State simcall_execution_wait(simgrid::kernel::activit
                                                         double timeout) // XBT_ATTRIB_DEPRECATED_v330
 {
   simgrid::kernel::actor::ActorImpl* issuer = simgrid::kernel::actor::ActorImpl::self();
-  simgrid::kernel::actor::simcall_blocking<void>(
-      [execution, issuer, timeout] { execution->wait_for(issuer, timeout); });
+  simgrid::kernel::actor::simcall_blocking([execution, issuer, timeout] { execution->wait_for(issuer, timeout); });
   return simgrid::kernel::activity::State::DONE;
 }
 
@@ -44,8 +43,7 @@ simgrid::kernel::activity::State simcall_execution_wait(const simgrid::kernel::a
                                                         double timeout) // XBT_ATTRIB_DEPRECATED_v330
 {
   simgrid::kernel::actor::ActorImpl* issuer = simgrid::kernel::actor::ActorImpl::self();
-  simgrid::kernel::actor::simcall_blocking<void>(
-      [execution, issuer, timeout] { execution->wait_for(issuer, timeout); });
+  simgrid::kernel::actor::simcall_blocking([execution, issuer, timeout] { execution->wait_for(issuer, timeout); });
   return simgrid::kernel::activity::State::DONE;
 }
 
@@ -59,9 +57,18 @@ bool simcall_execution_test(const simgrid::kernel::activity::ActivityImplPtr& ex
   return simgrid::kernel::actor::simcall([execution] { return execution->test(); });
 }
 
-unsigned int simcall_execution_waitany_for(simgrid::kernel::activity::ExecImpl* execs[], size_t count, double timeout)
+unsigned int simcall_execution_waitany_for(simgrid::kernel::activity::ExecImpl* execs[], size_t count,
+                                           double timeout) // XBT_ATTRIB_DEPRECATED_v331
 {
-  return simcall_BODY_execution_waitany_for(execs, count, timeout);
+  std::vector<simgrid::kernel::activity::ExecImpl*> execsv(execs, execs + count);
+  simgrid::kernel::actor::ActorImpl* issuer = simgrid::kernel::actor::ActorImpl::self();
+  simgrid::kernel::actor::ExecutionWaitanySimcall observer{issuer, &execsv, timeout};
+  return simgrid::kernel::actor::simcall_blocking(
+      [&observer] {
+        simgrid::kernel::activity::ExecImpl::wait_any_for(observer.get_issuer(), observer.get_execs(),
+                                                          observer.get_timeout());
+      },
+      &observer);
 }
 
 void simcall_process_join(smx_actor_t process, double timeout) // XBT_ATTRIB_DEPRECATED_v328
@@ -291,45 +298,44 @@ smx_cond_t simcall_cond_init() // XBT_ATTRIB_DEPRECATED_v330
  * @ingroup simix_synchro_management
  *
  */
-void simcall_cond_wait(smx_cond_t cond, smx_mutex_t mutex)
+void simcall_cond_wait(smx_cond_t cond, smx_mutex_t mutex) // XBT_ATTRIB_DEPRECATED_v331
 {
-  simcall_BODY_cond_wait(cond, mutex);
+  cond->get_iface()->wait(std::unique_lock<simgrid::s4u::Mutex>(mutex->mutex()));
 }
 
 /**
  * @ingroup simix_synchro_management
  *
  */
-int simcall_cond_wait_timeout(smx_cond_t cond, smx_mutex_t mutex, double timeout)
+int simcall_cond_wait_timeout(smx_cond_t cond, smx_mutex_t mutex, double timeout) // XBT_ATTRIB_DEPRECATD_v331
 {
-  xbt_assert(std::isfinite(timeout), "timeout is not finite!");
-  return simcall_BODY_cond_wait_timeout(cond, mutex, timeout);
+  return cond->get_iface()->wait_for(std::unique_lock<simgrid::s4u::Mutex>(mutex->mutex()), timeout) ==
+         std::cv_status::timeout;
 }
 
 /**
  * @ingroup simix_synchro_management
  *
  */
-void simcall_sem_acquire(smx_sem_t sem)
+void simcall_sem_acquire(smx_sem_t sem) // XBT_ATTRIB_DEPRECATD_v331
 {
-  simcall_BODY_sem_acquire(sem);
+  return sem->sem().acquire();
 }
 
 /**
  * @ingroup simix_synchro_management
  *
  */
-int simcall_sem_acquire_timeout(smx_sem_t sem, double timeout)
+int simcall_sem_acquire_timeout(smx_sem_t sem, double timeout) // XBT_ATTRIB_DEPRECATD_v331
 {
-  xbt_assert(std::isfinite(timeout), "timeout is not finite!");
-  return simcall_BODY_sem_acquire_timeout(sem, timeout);
+  return sem->sem().acquire_timeout(timeout);
 }
 
 simgrid::kernel::activity::State simcall_io_wait(simgrid::kernel::activity::ActivityImpl* io,
                                                  double timeout) // XBT_ATTRIB_DEPRECATED_v330
 {
   simgrid::kernel::actor::ActorImpl* issuer = simgrid::kernel::actor::ActorImpl::self();
-  simgrid::kernel::actor::simcall_blocking<void>([io, issuer, timeout] { io->wait_for(issuer, timeout); });
+  simgrid::kernel::actor::simcall_blocking([io, issuer, timeout] { io->wait_for(issuer, timeout); });
   return simgrid::kernel::activity::State::DONE;
 }
 
@@ -337,7 +343,7 @@ simgrid::kernel::activity::State simcall_io_wait(const simgrid::kernel::activity
                                                  double timeout) // XBT_ATTRIB_DEPRECATED_v330
 {
   simgrid::kernel::actor::ActorImpl* issuer = simgrid::kernel::actor::ActorImpl::self();
-  simgrid::kernel::actor::simcall_blocking<void>([io, issuer, timeout] { io->wait_for(issuer, timeout); });
+  simgrid::kernel::actor::simcall_blocking([io, issuer, timeout] { io->wait_for(issuer, timeout); });
   return simgrid::kernel::activity::State::DONE;
 }
 
@@ -351,16 +357,16 @@ bool simcall_io_test(const simgrid::kernel::activity::ActivityImplPtr& io) // XB
   return simgrid::kernel::actor::simcall([io] { return io->test(); });
 }
 
-void simcall_run_kernel(std::function<void()> const& code, simgrid::mc::SimcallObserver* t)
+void simcall_run_kernel(std::function<void()> const& code, simgrid::kernel::actor::SimcallObserver* observer)
 {
-  simgrid::kernel::actor::ActorImpl::self()->simcall_.observer_ = t;
+  simgrid::kernel::actor::ActorImpl::self()->simcall_.observer_ = observer;
   simcall_BODY_run_kernel(&code);
   simgrid::kernel::actor::ActorImpl::self()->simcall_.observer_ = nullptr;
 }
 
-void simcall_run_blocking(std::function<void()> const& code, simgrid::mc::SimcallObserver* t = nullptr)
+void simcall_run_blocking(std::function<void()> const& code, simgrid::kernel::actor::SimcallObserver* observer)
 {
-  simgrid::kernel::actor::ActorImpl::self()->simcall_.observer_ = t;
+  simgrid::kernel::actor::ActorImpl::self()->simcall_.observer_ = observer;
   simcall_BODY_run_blocking(&code);
   simgrid::kernel::actor::ActorImpl::self()->simcall_.observer_ = nullptr;
 }

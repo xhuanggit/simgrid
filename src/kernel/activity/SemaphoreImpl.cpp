@@ -5,6 +5,8 @@
 
 #include "src/kernel/activity/SemaphoreImpl.hpp"
 #include "src/kernel/activity/SynchroRaw.hpp"
+#include "src/kernel/actor/SimcallObserver.hpp"
+#include <cmath> // std::isfinite
 
 XBT_LOG_NEW_DEFAULT_SUBCATEGORY(simix_semaphore, simix_synchro, "Semaphore kernel-space implementation");
 
@@ -15,11 +17,14 @@ namespace activity {
 void SemaphoreImpl::acquire(actor::ActorImpl* issuer, double timeout)
 {
   XBT_DEBUG("Wait semaphore %p (timeout:%f)", this, timeout);
+  xbt_assert(std::isfinite(timeout), "timeout is not finite!");
+
   if (value_ <= 0) {
     RawImplPtr synchro(new RawImpl([this, issuer]() {
       this->remove_sleeping_actor(*issuer);
-      if (issuer->simcall_.call_ == simix::Simcall::SEM_ACQUIRE_TIMEOUT)
-        simcall_sem_acquire_timeout__set__result(&issuer->simcall_, 1);
+      auto* observer = dynamic_cast<kernel::actor::SemAcquireSimcall*>(issuer->simcall_.observer_);
+      xbt_assert(observer != nullptr);
+      observer->set_result(true);
     }));
     synchro->set_host(issuer->get_host()).set_timeout(timeout).start();
     synchro->register_simcall(&issuer->simcall_);
@@ -43,24 +48,19 @@ void SemaphoreImpl::release()
   }
 }
 
+/** Increase the refcount for this semaphore */
+SemaphoreImpl* SemaphoreImpl::ref()
+{
+  intrusive_ptr_add_ref(this);
+  return this;
+}
+
+/** Decrease the refcount for this mutex */
+void SemaphoreImpl::unref()
+{
+  intrusive_ptr_release(this);
+}
+
 } // namespace activity
 } // namespace kernel
 } // namespace simgrid
-
-// Simcall handlers:
-/**
- * @brief Handles a sem acquire simcall without timeout.
- */
-void simcall_HANDLER_sem_acquire(smx_simcall_t simcall, smx_sem_t sem)
-{
-  sem->acquire(simcall->issuer_, -1);
-}
-
-/**
- * @brief Handles a sem acquire simcall with timeout.
- */
-void simcall_HANDLER_sem_acquire_timeout(smx_simcall_t simcall, smx_sem_t sem, double timeout)
-{
-  simcall_sem_acquire_timeout__set__result(simcall, 0); // default result, will be set to 1 on timeout
-  sem->acquire(simcall->issuer_, timeout);
-}

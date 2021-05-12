@@ -19,14 +19,20 @@ class XBT_PUBLIC CommImpl : public ActivityImpl_T<CommImpl> {
   ~CommImpl() override;
   void cleanup_surf();
 
+  static void (*copy_data_callback_)(CommImpl*, void*, size_t);
+
   double rate_       = 0.0;
   double size_       = 0.0;
   bool detached_     = false;   /* If detached or not */
   bool copied_       = false;   /* whether the data were already copied */
   MailboxImpl* mbox_ = nullptr; /* Rendez-vous where the comm is queued */
+  s4u::Host* from_   = nullptr; /* Pre-determined only for direct host-to-host communications */
+  s4u::Host* to_     = nullptr; /* Otherwise, computed at start() time from the actors */
 
 public:
   enum class Type { SEND, RECEIVE };
+
+  static void set_copy_data_callback(void (*callback)(CommImpl*, void*, size_t));
 
   explicit CommImpl(Type type) : type_(type) {}
   CommImpl(s4u::Host* from, s4u::Host* to, double bytes);
@@ -70,8 +76,6 @@ expectations of the other side, too. See  */
   resource::Action* dst_timeout_ = nullptr; /* Surf's actions to instrument the timeouts */
   actor::ActorImplPtr src_actor_ = nullptr;
   actor::ActorImplPtr dst_actor_ = nullptr;
-  s4u::Host* from_               = nullptr; /* Pre-determined only for direct host-to-host communications */
-  s4u::Host* to_                 = nullptr; /* Otherwise, computed at start() time from the actors */
 
   /* Data to be transferred */
   unsigned char* src_buff_ = nullptr;
