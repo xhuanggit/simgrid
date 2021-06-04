@@ -6,6 +6,9 @@
 /* This program is free software; you can redistribute it and/or modify it
  * under the terms of the license (GNU LGPL) which comes with this package. */
 
+/* Modified message size boundaries and decision logic details to be consistent with mpich
+ * Author: Xiaolong Huang (2021) */
+
 #include "colls_private.hpp"
 
 #include <memory>
@@ -169,16 +172,16 @@ int alltoall__mpich(const void *sbuf, int scount,
     dsize = sdtype->size();
     block_dsize = dsize * scount;
 
-    if ((block_dsize < short_size) && (communicator_size >= 8)) {
+    if ((block_dsize <= short_size) && (communicator_size >= 8)) {
         return alltoall__bruck(sbuf, scount, sdtype,
                                rbuf, rcount, rdtype,
                                comm);
 
-    } else if (block_dsize < medium_size) {
+    } else if (block_dsize <= medium_size) {
         return alltoall__mvapich2_scatter_dest(sbuf, scount, sdtype,
                                                rbuf, rcount, rdtype,
                                                comm);
-    }else if (communicator_size%2){
+    }else if (!(communicator_size%2)){
         return alltoall__pair(sbuf, scount, sdtype,
                               rbuf, rcount, rdtype,
                               comm);
@@ -379,7 +382,7 @@ int reduce__mpich(const void *sendbuf, void *recvbuf,
     while (pof2 <= communicator_size) pof2 <<= 1;
     pof2 >>= 1;
 
-    if ((count < pof2) || (message_size < 2048) || (op != MPI_OP_NULL && not op->is_commutative())) {
+    if ((count < pof2) || (message_size <= 2048) || (op != MPI_OP_NULL && not op->is_commutative())) {
       return reduce__binomial(sendbuf, recvbuf, count, datatype, op, root, comm);
     }
     return reduce__scatter_gather(sendbuf, recvbuf, count, datatype, op, root, comm);
@@ -443,20 +446,23 @@ int reduce_scatter__mpich(const void *sbuf, void *rbuf,
                           )
 {
     int comm_size, i;
-    size_t total_message_size;
+    size_t dsize, total_message_size;
 
     if(sbuf==rbuf)sbuf=MPI_IN_PLACE; //restore MPI_IN_PLACE as these algorithms handle it
 
     XBT_DEBUG("Coll_reduce_scatter_mpich::reduce");
 
     comm_size = comm->size();
+    dsize = dtype->size();
+
     // We need data size for decision function
     total_message_size = 0;
     for (i = 0; i < comm_size; i++) {
         total_message_size += rcounts[i];
     }
+	total_message_size *= dsize;
 
-    if( (op==MPI_OP_NULL || op->is_commutative()) &&  total_message_size > 524288) {
+    if( (op==MPI_OP_NULL || op->is_commutative()) &&  total_message_size >= 524288) {
         return reduce_scatter__mpich_pair(sbuf, rbuf, rcounts, dtype, op, comm);
     } else if ((op != MPI_OP_NULL && not op->is_commutative())) {
       bool is_block_regular = true;
