@@ -7,7 +7,7 @@
  * under the terms of the license (GNU LGPL) which comes with this package. */
 
 /* Modified message size boundaries and decision logic details to be consistent with mpich
- * Author: Xiaolong Huang (2021) */
+ * Author: Xiaolong Huang, 2021 */
 
 #include "colls_private.hpp"
 
