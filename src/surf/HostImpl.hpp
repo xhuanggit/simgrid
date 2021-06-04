@@ -48,20 +48,33 @@ class XBT_PRIVATE HostImpl : public xbt::PropertyHolder {
 
   ActorList actor_list_;
   std::vector<kernel::actor::ProcessArg*> actors_at_boot_;
-  s4u::Host* piface_ = nullptr; // we must have a pointer there because the VM wants to change the piface in its ctor
+  s4u::Host piface_;
   std::vector<kernel::resource::DiskImpl*> disks_;
+  xbt::string name_{"noname"};
+  bool sealed_ = false;
+
+protected:
+  virtual ~HostImpl(); // Use destroy() instead of this destructor.
+  HostImpl(const std::string& name, s4u::Host* piface);
 
 public:
   friend simgrid::vm::VirtualMachineImpl;
-  explicit HostImpl(s4u::Host* host);
-  virtual ~HostImpl();
+  explicit HostImpl(const std::string& name);
+
+  void destroy(); // Must be called instead of the destructor
 
   std::vector<s4u::Disk*> get_disks() const;
-  void set_disks(const std::vector<kernel::resource::DiskImpl*>& disks, s4u::Host* host);
+  s4u::Disk* create_disk(const std::string& name, double read_bandwidth, double write_bandwidth);
   void add_disk(const s4u::Disk* disk);
   void remove_disk(const std::string& disk_name);
 
-  s4u::Host* get_iface() const { return piface_; }
+  virtual const s4u::Host* get_iface() const { return &piface_; }
+  virtual s4u::Host* get_iface() { return &piface_; }
+
+  /** Retrieves the name of that host as a C++ string */
+  xbt::string const& get_name() const { return name_; }
+  /** Retrieves the name of that host as a C string */
+  const char* get_cname() const { return name_.c_str(); }
 
   void turn_on() const;
   void turn_off(const kernel::actor::ActorImpl* issuer);
@@ -71,13 +84,15 @@ public:
   void remove_actor(kernel::actor::ActorImpl* actor) { xbt::intrusive_erase(actor_list_, *actor); }
   void add_actor_at_boot(kernel::actor::ProcessArg* arg) { actors_at_boot_.emplace_back(arg); }
 
+  void seal();
+
   template <class F> void foreach_actor(F function)
   {
     for (auto& actor : actor_list_)
       function(actor);
   }
 };
-}
-}
+} // namespace surf
+} // namespace simgrid
 
 #endif /* SURF_HOST_INTERFACE_HPP */

@@ -169,6 +169,8 @@ include examples/cpp/cloud-migration/s4u-cloud-migration.cpp
 include examples/cpp/cloud-migration/s4u-cloud-migration.tesh
 include examples/cpp/cloud-simple/s4u-cloud-simple.cpp
 include examples/cpp/cloud-simple/s4u-cloud-simple.tesh
+include examples/cpp/clusters-multicpu/s4u-clusters-multicpu.cpp
+include examples/cpp/clusters-multicpu/s4u-clusters-multicpu.tesh
 include examples/cpp/comm-dependent/s4u-comm-dependent.cpp
 include examples/cpp/comm-dependent/s4u-comm-dependent.tesh
 include examples/cpp/comm-host2host/s4u-comm-host2host.cpp
@@ -272,6 +274,8 @@ include examples/cpp/mc-electric-fence/s4u-mc-electric-fence.cpp
 include examples/cpp/mc-electric-fence/s4u-mc-electric-fence.tesh
 include examples/cpp/mc-failing-assert/s4u-mc-failing-assert.cpp
 include examples/cpp/mc-failing-assert/s4u-mc-failing-assert.tesh
+include examples/cpp/network-factors/s4u-network-factors.cpp
+include examples/cpp/network-factors/s4u-network-factors.tesh
 include examples/cpp/network-ns3-wifi/s4u-network-ns3-wifi.cpp
 include examples/cpp/network-ns3-wifi/s4u-network-ns3-wifi.tesh
 include examples/cpp/network-ns3/3hosts_2links_d.xml
@@ -297,6 +301,8 @@ include examples/cpp/plugin-host-load/s4u-plugin-host-load.cpp
 include examples/cpp/plugin-host-load/s4u-plugin-host-load.tesh
 include examples/cpp/plugin-link-load/s4u-plugin-link-load.cpp
 include examples/cpp/plugin-link-load/s4u-plugin-link-load.tesh
+include examples/cpp/plugin-prodcons/s4u-plugin-prodcons.cpp
+include examples/cpp/plugin-prodcons/s4u-plugin-prodcons.tesh
 include examples/cpp/replay-comm/s4u-replay-comm-split-p0.txt
 include examples/cpp/replay-comm/s4u-replay-comm-split-p1.txt
 include examples/cpp/replay-comm/s4u-replay-comm-split_d.xml
@@ -723,6 +729,9 @@ include teshsuite/s4u/host-on-off/host-on-off.cpp
 include teshsuite/s4u/host-on-off/host-on-off.tesh
 include teshsuite/s4u/is-router/is-router.cpp
 include teshsuite/s4u/is-router/is-router.tesh
+include teshsuite/s4u/issue71/issue71.cpp
+include teshsuite/s4u/issue71/issue71.tesh
+include teshsuite/s4u/issue71/platform_bad.xml
 include teshsuite/s4u/listen_async/listen_async.cpp
 include teshsuite/s4u/listen_async/listen_async.tesh
 include teshsuite/s4u/ns3-from-src-to-itself/ns3-from-src-to-itself.cpp
@@ -731,6 +740,8 @@ include teshsuite/s4u/ns3-simultaneous-send-rcv/ns3-simultaneous-send-rcv.cpp
 include teshsuite/s4u/ns3-simultaneous-send-rcv/ns3-simultaneous-send-rcv.tesh
 include teshsuite/s4u/pid/pid.cpp
 include teshsuite/s4u/pid/pid.tesh
+include teshsuite/s4u/seal-platform/seal-platform.cpp
+include teshsuite/s4u/seal-platform/seal-platform.tesh
 include teshsuite/s4u/storage_client_server/storage_client_server.cpp
 include teshsuite/s4u/storage_client_server/storage_client_server.tesh
 include teshsuite/s4u/trace-integration/test-hbp1-c0s0-c0s1.xml
@@ -750,6 +761,8 @@ include teshsuite/s4u/trace-integration/trace-integration.tesh
 include teshsuite/s4u/vm-live-migration/platform.xml
 include teshsuite/s4u/vm-live-migration/vm-live-migration.cpp
 include teshsuite/s4u/vm-live-migration/vm-live-migration.tesh
+include teshsuite/s4u/vm-suicide/vm-suicide.cpp
+include teshsuite/s4u/vm-suicide/vm-suicide.tesh
 include teshsuite/s4u/wait-any-for/wait-any-for.cpp
 include teshsuite/s4u/wait-any-for/wait-any-for.tesh
 include teshsuite/simdag/availability/availability.c
@@ -766,6 +779,9 @@ include teshsuite/simdag/platforms/bogus_missing_dst_gateway.xml
 include teshsuite/simdag/platforms/bogus_missing_src_gateway.xml
 include teshsuite/simdag/platforms/bogus_two_hosts_asymetric.xml
 include teshsuite/simdag/platforms/carol.fail
+include teshsuite/simdag/platforms/cluster_dragonfly_noncontiguous_rad.xml
+include teshsuite/simdag/platforms/cluster_fat_tree_noncontiguous_rad.xml
+include teshsuite/simdag/platforms/cluster_torus_noncontiguous_rad.xml
 include teshsuite/simdag/platforms/erin.avail
 include teshsuite/simdag/platforms/four_hosts_floyd.xml
 include teshsuite/simdag/platforms/host_attributes.xml
@@ -1763,6 +1779,7 @@ include doc/doxygen/uhood.doc
 include doc/doxygen/uhood_arch.doc
 include doc/doxygen/uhood_switch.doc
 include docs/Build.sh
+include docs/README.md
 include docs/bin/extract_logs_hierarchy.pl
 include docs/find-missing.ignore
 include docs/find-missing.py
@@ -1792,6 +1809,7 @@ include docs/source/Start_your_own_project.rst
 include docs/source/The_XBT_toolbox.rst
 include docs/source/Tutorial_Algorithms.rst
 include docs/source/Tutorial_MPI_Applications.rst
+include docs/source/Tutorial_Model-checking.rst
 include docs/source/XML_reference.rst
 include docs/source/_ext/javasphinx/LICENSE
 include docs/source/_ext/javasphinx/MANIFEST.in
@@ -1826,6 +1844,7 @@ include docs/source/img/smpi_simgrid_alltoall_pair_16.png
 include docs/source/img/smpi_simgrid_alltoall_ring_16.png
 include docs/source/img/zone_hierarchy.png
 include docs/source/index.rst
+include docs/source/intl.rst
 include docs/source/tuto_s4u/deployment1.xml
 include docs/source/tuto_s4u/deployment2.xml
 include docs/source/tuto_s4u/deployment3.xml
@@ -1958,9 +1977,11 @@ include include/simgrid/jedule/jedule.hpp
 include include/simgrid/jedule/jedule_events.hpp
 include include/simgrid/jedule/jedule_platform.hpp
 include include/simgrid/jedule/jedule_sd_binding.h
+include include/simgrid/kernel/Timer.hpp
 include include/simgrid/kernel/future.hpp
 include include/simgrid/kernel/resource/Action.hpp
 include include/simgrid/kernel/resource/Model.hpp
+include include/simgrid/kernel/resource/NetworkModelIntf.hpp
 include include/simgrid/kernel/resource/Resource.hpp
 include include/simgrid/kernel/routing/ClusterZone.hpp
 include include/simgrid/kernel/routing/DijkstraZone.hpp
@@ -1972,6 +1993,7 @@ include include/simgrid/kernel/routing/FullZone.hpp
 include include/simgrid/kernel/routing/NetPoint.hpp
 include include/simgrid/kernel/routing/NetZoneImpl.hpp
 include include/simgrid/kernel/routing/RoutedZone.hpp
+include include/simgrid/kernel/routing/StarZone.hpp
 include include/simgrid/kernel/routing/TorusZone.hpp
 include include/simgrid/kernel/routing/VivaldiZone.hpp
 include include/simgrid/kernel/routing/WifiZone.hpp
@@ -1980,6 +2002,7 @@ include include/simgrid/mailbox.h
 include include/simgrid/modelchecker.h
 include include/simgrid/msg.h
 include include/simgrid/mutex.h
+include include/simgrid/plugins/ProducerConsumer.hpp
 include include/simgrid/plugins/dvfs.h
 include include/simgrid/plugins/energy.h
 include include/simgrid/plugins/file_system.h
@@ -2051,7 +2074,6 @@ include include/xbt/replay.hpp
 include include/xbt/signal.hpp
 include include/xbt/str.h
 include include/xbt/string.hpp
-include include/xbt/synchro.h
 include include/xbt/sysdep.h
 include include/xbt/system_error.hpp
 include include/xbt/utility.hpp
@@ -2186,6 +2208,7 @@ include src/kernel/resource/Action.cpp
 include src/kernel/resource/DiskImpl.cpp
 include src/kernel/resource/DiskImpl.hpp
 include src/kernel/resource/Model.cpp
+include src/kernel/resource/NetworkModelIntf_test.cpp
 include src/kernel/resource/profile/DatedValue.cpp
 include src/kernel/resource/profile/DatedValue.hpp
 include src/kernel/resource/profile/Event.hpp
@@ -2198,17 +2221,26 @@ include src/kernel/resource/profile/StochasticDatedValue.cpp
 include src/kernel/resource/profile/StochasticDatedValue.hpp
 include src/kernel/routing/ClusterZone.cpp
 include src/kernel/routing/DijkstraZone.cpp
+include src/kernel/routing/DijkstraZone_test.cpp
 include src/kernel/routing/DragonflyZone.cpp
+include src/kernel/routing/DragonflyZone_test.cpp
 include src/kernel/routing/EmptyZone.cpp
 include src/kernel/routing/FatTreeZone.cpp
+include src/kernel/routing/FatTreeZone_test.cpp
 include src/kernel/routing/FloydZone.cpp
+include src/kernel/routing/FloydZone_test.cpp
 include src/kernel/routing/FullZone.cpp
+include src/kernel/routing/FullZone_test.cpp
 include src/kernel/routing/NetPoint.cpp
 include src/kernel/routing/NetZoneImpl.cpp
 include src/kernel/routing/RoutedZone.cpp
+include src/kernel/routing/StarZone.cpp
+include src/kernel/routing/StarZone_test.cpp
 include src/kernel/routing/TorusZone.cpp
+include src/kernel/routing/TorusZone_test.cpp
 include src/kernel/routing/VivaldiZone.cpp
 include src/kernel/routing/WifiZone.cpp
+include src/kernel/timer/Timer.cpp
 include src/mc/AddressSpace.hpp
 include src/mc/ModelChecker.cpp
 include src/mc/ModelChecker.hpp
@@ -2298,6 +2330,7 @@ include src/msg/msg_legacy.cpp
 include src/msg/msg_private.hpp
 include src/msg/msg_process.cpp
 include src/msg/msg_task.cpp
+include src/plugins/ProducerConsumer.cpp
 include src/plugins/dirty_page_tracking.cpp
 include src/plugins/file_system/s4u_FileSystem.cpp
 include src/plugins/host_dvfs.cpp

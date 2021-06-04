@@ -116,7 +116,7 @@ void Actor::join(double timeout) const
   const kernel::actor::ActorImpl* target = pimpl_;
   kernel::actor::simcall_blocking([issuer, target, timeout] {
     if (target->finished_) {
-      // The joined process is already finished, just wake up the issuer right away
+      // The joined actor is already finished, just wake up the issuer right away
       issuer->simcall_answer();
     } else {
       kernel::activity::ActivityImplPtr sync = issuer->join(target, timeout);
@@ -133,7 +133,7 @@ void Actor::set_auto_restart(bool autorestart)
 
     auto* arg = new kernel::actor::ProcessArg(pimpl_->get_host(), pimpl_);
     XBT_DEBUG("Adding %s to the actors_at_boot_ list of Host %s", arg->name.c_str(), arg->host->get_cname());
-    pimpl_->get_host()->pimpl_->add_actor_at_boot(arg);
+    pimpl_->get_host()->get_impl()->add_actor_at_boot(arg);
   });
 }
 
@@ -157,13 +157,10 @@ void Actor::set_host(Host* new_host)
   const s4u::Host* previous_location = get_host();
 
   kernel::actor::simcall([this, new_host]() {
-    if (pimpl_->waiting_synchro_ != nullptr) {
-      // The actor is blocked on an activity. If it's an exec, migrate it too.
+    for (auto const& activity : pimpl_->activities_) {
       // FIXME: implement the migration of other kinds of activities
-      kernel::activity::ExecImplPtr exec =
-          boost::dynamic_pointer_cast<kernel::activity::ExecImpl>(pimpl_->waiting_synchro_);
-      xbt_assert(exec.get() != nullptr, "We can only migrate blocked actors when they are blocked on executions.");
-      exec->migrate(new_host);
+      if (auto exec = boost::dynamic_pointer_cast<kernel::activity::ExecImpl>(activity))
+        exec->migrate(new_host);
     }
     this->pimpl_->set_host(new_host);
   });
@@ -318,22 +315,34 @@ void sleep_for(double duration)
 {
   xbt_assert(std::isfinite(duration), "duration is not finite!");
 
-  if (duration > 0) {
-    kernel::actor::ActorImpl* issuer = kernel::actor::ActorImpl::self();
-    Actor::on_sleep(*issuer->get_ciface());
+  if (duration <= 0) /* that's a no-op */
+    return;
 
-    kernel::actor::simcall_blocking([issuer, duration]() {
-      if (MC_is_active() || MC_record_replay_is_active()) {
-        MC_process_clock_add(issuer, duration);
-        issuer->simcall_answer();
-        return;
-      }
-      kernel::activity::ActivityImplPtr sync = issuer->sleep(duration);
-      sync->register_simcall(&issuer->simcall_);
-    });
-
-    Actor::on_wake_up(*issuer->get_ciface());
+  if (duration < sg_surf_precision) {
+    static unsigned int warned = 0; // At most 20 such warnings
+    warned++;
+    if (warned <= 20)
+      XBT_INFO("The parameter to sleep_for() is smaller than the SimGrid numerical accuracy (%g < %g). "
+               "Please refer to https://simgrid.org/doc/latest/Configuring_SimGrid.html#numerical-precision",
+               duration, sg_surf_precision);
+    if (warned == 20)
+      XBT_VERB("(further warnings about the numerical accuracy of sleep_for() will be omitted).");
   }
+
+  kernel::actor::ActorImpl* issuer = kernel::actor::ActorImpl::self();
+  Actor::on_sleep(*issuer->get_ciface());
+
+  kernel::actor::simcall_blocking([issuer, duration]() {
+    if (MC_is_active() || MC_record_replay_is_active()) {
+      MC_process_clock_add(issuer, duration);
+      issuer->simcall_answer();
+      return;
+    }
+    kernel::activity::ActivityImplPtr sync = issuer->sleep(duration);
+    sync->register_simcall(&issuer->simcall_);
+  });
+
+  Actor::on_wake_up(*issuer->get_ciface());
 }
 
 void yield()
@@ -343,7 +352,7 @@ void yield()
 
 XBT_PUBLIC void sleep_until(double wakeup_time)
 {
-  double now = SIMIX_get_clock();
+  double now = s4u::Engine::get_clock();
   if (wakeup_time > now)
     sleep_for(wakeup_time - now);
 }
@@ -678,9 +687,9 @@ void sg_actor_set_host(sg_actor_t actor, sg_host_t host)
 {
   actor->set_host(host);
 }
-void sg_actor_migrate(sg_actor_t process, sg_host_t host) // XBT_ATTRIB_DEPRECATED_v329
+void sg_actor_migrate(sg_actor_t actor, sg_host_t host) // XBT_ATTRIB_DEPRECATED_v329
 {
-  process->set_host(host);
+  actor->set_host(host);
 }
 
 /**
@@ -742,10 +751,11 @@ sg_actor_t sg_actor_attach(const char* name, void* data, sg_host_t host, xbt_dic
     props[key] = value;
   xbt_dict_free(&properties);
 
-  /* Let's create the process: SIMIX may decide to start it right now, even before returning the flow control to us */
+  /* Let's create the actor: SIMIX may decide to start it right now, even before returning the flow control to us */
   smx_actor_t actor = nullptr;
   try {
-    actor = simgrid::kernel::actor::ActorImpl::attach(name, data, host, &props).get();
+    actor = simgrid::kernel::actor::ActorImpl::attach(name, data, host).get();
+    actor->set_properties(props);
   } catch (simgrid::HostFailureException const&) {
     xbt_die("Could not attach");
   }
@@ -859,9 +869,9 @@ void sg_actor_data_set(sg_actor_t actor, void* userdata) // XBT_ATTRIB_DEPRECATE
   sg_actor_set_data(actor, userdata);
 }
 
-/** @brief Add a function to the list of "on_exit" functions for the current process.
- *  The on_exit functions are the functions executed when your process is killed.
- *  You should use them to free the data used by your process.
+/** @brief Add a function to the list of "on_exit" functions for the current actor.
+ *  The on_exit functions are the functions executed when your actor is killed.
+ *  You should use them to free the data used by your actor.
  */
 void sg_actor_on_exit(void_f_int_pvoid_t fun, void* data)
 {

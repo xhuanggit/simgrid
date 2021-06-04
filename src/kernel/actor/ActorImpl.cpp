@@ -3,10 +3,11 @@
 /* This program is free software; you can redistribute it and/or modify it
  * under the terms of the license (GNU LGPL) which comes with this package. */
 
+#include "simgrid/s4u/Actor.hpp"
 #include "mc/mc.h"
 #include "simgrid/Exception.hpp"
-#include "simgrid/s4u/Actor.hpp"
 #include "simgrid/s4u/Exec.hpp"
+#include "src/kernel/EngineImpl.hpp"
 #include "src/kernel/activity/CommImpl.hpp"
 #include "src/kernel/activity/ExecImpl.hpp"
 #include "src/kernel/activity/IoImpl.hpp"
@@ -15,10 +16,14 @@
 #include "src/mc/mc_replay.hpp"
 #include "src/mc/remote/AppSide.hpp"
 #include "src/simix/smx_private.hpp"
+#if HAVE_SMPI
+#include "src/smpi/include/private.hpp"
+#endif
 #include "src/surf/HostImpl.hpp"
 #include "src/surf/cpu_interface.hpp"
 
 #include <boost/core/demangle.hpp>
+#include <typeinfo>
 #include <utility>
 
 XBT_LOG_NEW_DEFAULT_SUBCATEGORY(simix_process, simix, "Logging specific to SIMIX (process)");
@@ -44,21 +49,13 @@ unsigned long get_maxpid()
 {
   return maxpid;
 }
-void* get_maxpid_addr()
+unsigned long* get_maxpid_addr()
 {
   return &maxpid;
 }
 ActorImpl* ActorImpl::by_pid(aid_t pid)
 {
-  auto item = simix_global->process_list.find(pid);
-  if (item != simix_global->process_list.end())
-    return item->second;
-
-  // Search the trash
-  for (auto& a : simix_global->actors_to_destroy)
-    if (a.get_pid() == pid)
-      return &a;
-  return nullptr; // Not found, even in the trash
+  return EngineImpl::get_instance()->get_actor_by_pid(pid);
 }
 
 ActorImpl* ActorImpl::self()
@@ -77,7 +74,7 @@ ActorImpl::ActorImpl(xbt::string name, s4u::Host* host) : host_(host), name_(std
 
 ActorImpl::~ActorImpl()
 {
-  if (simix_global != nullptr && this != simix_global->maestro_)
+  if (simix_global != nullptr && not simix_global->is_maestro(this))
     s4u::Actor::on_destruction(*get_ciface());
 }
 
@@ -89,11 +86,10 @@ ActorImpl::~ActorImpl()
  * In the future, it might be extended in order to attach other threads created by a third party library.
  */
 
-ActorImplPtr ActorImpl::attach(const std::string& name, void* data, s4u::Host* host,
-                               const std::unordered_map<std::string, std::string>* properties)
+ActorImplPtr ActorImpl::attach(const std::string& name, void* data, s4u::Host* host)
 {
   // This is mostly a copy/paste from create(), it'd be nice to share some code between those two functions.
-
+  auto* engine = EngineImpl::get_instance();
   XBT_DEBUG("Attach actor %s on host '%s'", name.c_str(), host->get_cname());
 
   if (not host->is_on()) {
@@ -108,19 +104,14 @@ ActorImplPtr ActorImpl::attach(const std::string& name, void* data, s4u::Host* h
 
   XBT_VERB("Create context %s", actor->get_cname());
   xbt_assert(simix_global != nullptr, "simix is not initialized, please call MSG_init first");
-  actor->context_.reset(simix_global->context_factory->attach(actor));
-
-  /* Add properties */
-  if (properties != nullptr)
-    actor->set_properties(*properties);
+  actor->context_.reset(simix_global->get_context_factory()->attach(actor));
 
   /* Add the actor to it's host actor list */
-  host->pimpl_->add_actor(actor);
+  host->get_impl()->add_actor(actor);
 
   /* Now insert it in the global actor list and in the actors to run list */
-  simix_global->process_list[actor->get_pid()] = actor;
-  XBT_DEBUG("Inserting [%p] %s(%s) in the to_run list", actor, actor->get_cname(), host->get_cname());
-  simix_global->actors_to_run.push_back(actor);
+  engine->add_actor(actor->get_pid(), actor);
+  engine->add_actor_to_run_list_no_check(actor);
   intrusive_ptr_add_ref(actor);
 
   auto* context = dynamic_cast<context::AttachContext*>(actor->context_.get());
@@ -149,15 +140,16 @@ void ActorImpl::detach()
 
 void ActorImpl::cleanup_from_simix()
 {
-  const std::lock_guard<std::mutex> lock(simix_global->mutex);
-  simix_global->process_list.erase(pid_);
+  auto* engine = EngineImpl::get_instance();
+  const std::lock_guard<std::mutex> lock(engine->get_mutex());
+  engine->remove_actor(pid_);
   if (host_ && host_actor_list_hook.is_linked())
-    host_->pimpl_->remove_actor(this);
-  if (not smx_destroy_list_hook.is_linked()) {
+    host_->get_impl()->remove_actor(this);
+  if (not kernel_destroy_list_hook.is_linked()) {
 #if SIMGRID_HAVE_MC
-    xbt_dynar_push_as(simix_global->dead_actors_vector, ActorImpl*, this);
+    engine->add_dead_actor_to_dynar(this);
 #endif
-    simix_global->actors_to_destroy.push_back(*this);
+    engine->add_actor_to_destroy_list(*this);
   }
 }
 
@@ -187,7 +179,7 @@ void ActorImpl::cleanup()
 
   XBT_DEBUG("%s@%s(%ld) should not run anymore", get_cname(), get_host()->get_cname(), get_pid());
 
-  if (this == simix_global->maestro_) /* Do not cleanup maestro */
+  if (simix_global->is_maestro(this)) /* Do not cleanup maestro */
     return;
 
   XBT_DEBUG("Cleanup actor %s (%p), waiting synchro %p", get_cname(), this, waiting_synchro_.get());
@@ -234,6 +226,9 @@ void ActorImpl::exit()
     activities_.remove(waiting_synchro_);
     waiting_synchro_ = nullptr;
   }
+  for (auto const& activity : activities_)
+    activity->cancel();
+  activities_.clear();
 
   // Forcefully kill the actor if its host is turned off. Not a HostFailureException because you should not survive that
   this->throw_exception(std::make_exception_ptr(ForcefulKillException(host_->is_on() ? "exited" : "host failed")));
@@ -241,7 +236,7 @@ void ActorImpl::exit()
 
 void ActorImpl::kill(ActorImpl* actor) const
 {
-  xbt_assert(actor != simix_global->maestro_, "Killing maestro is a rather bad idea");
+  xbt_assert(not simix_global->is_maestro(actor), "Killing maestro is a rather bad idea");
   if (actor->finished_) {
     XBT_DEBUG("Ignoring request to kill actor %s@%s that is already dead", actor->get_cname(),
               actor->host_->get_cname());
@@ -255,28 +250,23 @@ void ActorImpl::kill(ActorImpl* actor) const
 
   if (actor == this) {
     XBT_DEBUG("Go on, this is a suicide,");
-  } else if (std::find(begin(simix_global->actors_to_run), end(simix_global->actors_to_run), actor) !=
-             end(simix_global->actors_to_run)) {
-    XBT_DEBUG("Actor %s is already in the to_run list", actor->get_cname());
-  } else {
-    XBT_DEBUG("Inserting %s in the to_run list", actor->get_cname());
-    simix_global->actors_to_run.push_back(actor);
-  }
+  } else
+    EngineImpl::get_instance()->add_actor_to_run_list(actor);
 }
 
 void ActorImpl::kill_all() const
 {
-  for (auto const& kv : simix_global->process_list)
+  for (auto const& kv : EngineImpl::get_instance()->get_actor_list())
     if (kv.second != this)
       this->kill(kv.second);
 }
 
 void ActorImpl::set_kill_time(double kill_time)
 {
-  if (kill_time <= SIMIX_get_clock())
+  if (kill_time <= s4u::Engine::get_clock())
     return;
   XBT_DEBUG("Set kill time %f for actor %s@%s", kill_time, get_cname(), host_->get_cname());
-  kill_timer_ = simix::Timer::set(kill_time, [this] {
+  kill_timer_ = timer::Timer::set(kill_time, [this] {
     this->exit();
     kill_timer_ = nullptr;
   });
@@ -284,7 +274,7 @@ void ActorImpl::set_kill_time(double kill_time)
 
 double ActorImpl::get_kill_time() const
 {
-  return kill_timer_ ? kill_timer_->date : 0.0;
+  return kill_timer_ ? kill_timer_->get_date() : 0.0;
 }
 
 void ActorImpl::yield()
@@ -305,12 +295,7 @@ void ActorImpl::yield()
 
   if (suspended_) {
     XBT_DEBUG("Hey! I'm suspended.");
-
     xbt_assert(exception_ == nullptr, "Gasp! This exception may be lost by subsequent calls.");
-
-    if (waiting_synchro_ != nullptr) // Not sure of when this will happen. Maybe when suspending early in the SR when a
-      waiting_synchro_->suspend();   // waiting_synchro was terminated
-
     yield(); // Yield back to maestro without proceeding with my execution. I'll get rescheduled by resume()
   }
 
@@ -325,9 +310,10 @@ void ActorImpl::yield()
     }
   }
 
-  if (SMPI_switch_data_segment && not finished_) {
-    SMPI_switch_data_segment(get_iface());
-  }
+#if HAVE_SMPI
+  if (not finished_)
+    smpi_switch_data_segment(get_iface());
+#endif
 }
 
 /** This actor will be terminated automatically when the last non-daemon actor finishes */
@@ -335,38 +321,33 @@ void ActorImpl::daemonize()
 {
   if (not daemon_) {
     daemon_ = true;
-    simix_global->daemons.push_back(this);
+    EngineImpl::get_instance()->add_daemon(this);
   }
 }
 
 void ActorImpl::undaemonize()
 {
   if (daemon_) {
-    auto& vect = simix_global->daemons;
-    auto it    = std::find(vect.begin(), vect.end(), this);
-    xbt_assert(it != vect.end(), "The dying daemon is not a daemon after all. Please report that bug.");
-    /* Don't move the whole content since we don't really care about the order */
-
-    std::swap(*it, vect.back());
-    vect.pop_back();
     daemon_ = false;
+    EngineImpl::get_instance()->remove_daemon(this);
   }
 }
 
 s4u::Actor* ActorImpl::restart()
 {
-  xbt_assert(this != simix_global->maestro_, "Restarting maestro is not supported");
+  xbt_assert(not simix_global->is_maestro(this), "Restarting maestro is not supported");
 
   XBT_DEBUG("Restarting actor %s on %s", get_cname(), host_->get_cname());
 
   // retrieve the arguments of the old actor
-  ProcessArg arg = ProcessArg(host_, this);
+  ProcessArg arg(host_, this);
 
   // kill the old actor
   context::Context::self()->get_actor()->kill(this);
 
   // start the new actor
-  ActorImplPtr actor = ActorImpl::create(arg.name, arg.code, arg.data, arg.host, arg.properties.get(), nullptr);
+  ActorImplPtr actor = ActorImpl::create(arg.name, arg.code, arg.data, arg.host, nullptr);
+  actor->set_properties(arg.properties);
   *actor->on_exit = std::move(*arg.on_exit);
   actor->set_kill_time(arg.kill_time);
   actor->set_auto_restart(arg.auto_restart);
@@ -383,10 +364,9 @@ void ActorImpl::suspend()
 
   suspended_ = true;
 
-  /* If the suspended actor is waiting on a sync, suspend its synchronization.
-   * Otherwise, it will suspend itself when scheduled, ie, very soon. */
-  if (waiting_synchro_ != nullptr)
-    waiting_synchro_->suspend();
+  /* Suspend the activities associated with this actor. */
+  for (auto const& activity : activities_)
+    activity->suspend();
 }
 
 void ActorImpl::resume()
@@ -402,11 +382,11 @@ void ActorImpl::resume()
     return;
   suspended_ = false;
 
-  /* resume the activity that was blocking the resumed actor. */
-  if (waiting_synchro_)
-    waiting_synchro_->resume();
-  else // Reschedule the actor if it was forcefully unscheduled in yield()
-    simix_global->actors_to_run.push_back(this);
+  /* resume the activities that were blocked when suspending the actor. */
+  for (auto const& activity : activities_)
+    activity->resume();
+  if (not waiting_synchro_) // Reschedule the actor if it was forcefully unscheduled in yield()
+    EngineImpl::get_instance()->add_actor_to_run_list_no_check(this);
 
   XBT_OUT();
 }
@@ -449,24 +429,24 @@ void ActorImpl::throw_exception(std::exception_ptr e)
 
 void ActorImpl::simcall_answer()
 {
-  if (this != simix_global->maestro_) {
-    XBT_DEBUG("Answer simcall %s (%d) issued by %s (%p)", SIMIX_simcall_name(simcall_.call_), (int)simcall_.call_,
-              get_cname(), this);
+  if (not simix_global->is_maestro(this)) {
+    XBT_DEBUG("Answer simcall %s issued by %s (%p)", SIMIX_simcall_name(simcall_), get_cname(), this);
     xbt_assert(simcall_.call_ != simix::Simcall::NONE);
     simcall_.call_ = simix::Simcall::NONE;
+    auto* engine              = EngineImpl::get_instance();
+    const auto& actors_to_run = engine->get_actors_to_run();
     xbt_assert(not XBT_LOG_ISENABLED(simix_process, xbt_log_priority_debug) ||
-                   std::find(begin(simix_global->actors_to_run), end(simix_global->actors_to_run), this) ==
-                       end(simix_global->actors_to_run),
+                   std::find(begin(actors_to_run), end(actors_to_run), this) == end(actors_to_run),
                "Actor %p should not exist in actors_to_run!", this);
-    simix_global->actors_to_run.push_back(this);
+    engine->add_actor_to_run_list_no_check(this);
   }
 }
 
 void ActorImpl::set_host(s4u::Host* dest)
 {
-  host_->pimpl_->remove_actor(this);
+  host_->get_impl()->remove_actor(this);
   host_ = dest;
-  dest->pimpl_->add_actor(this);
+  dest->get_impl()->add_actor(this);
 }
 
 ActorImplPtr ActorImpl::init(const std::string& name, s4u::Host* host) const
@@ -484,6 +464,7 @@ ActorImplPtr ActorImpl::init(const std::string& name, s4u::Host* host) const
 ActorImpl* ActorImpl::start(const ActorCode& code)
 {
   xbt_assert(code && host_ != nullptr, "Invalid parameters");
+  auto* engine = EngineImpl::get_instance();
 
   if (not host_->is_on()) {
     XBT_WARN("Cannot launch actor '%s' on failed host '%s'", name_.c_str(), host_->get_cname());
@@ -493,23 +474,21 @@ ActorImpl* ActorImpl::start(const ActorCode& code)
 
   this->code_ = code;
   XBT_VERB("Create context %s", get_cname());
-  context_.reset(simix_global->context_factory->create_context(ActorCode(code), this));
+  context_.reset(simix_global->get_context_factory()->create_context(ActorCode(code), this));
 
   XBT_DEBUG("Start context '%s'", get_cname());
 
   /* Add the actor to its host's actor list */
-  host_->pimpl_->add_actor(this);
-  simix_global->process_list[pid_] = this;
+  host_->get_impl()->add_actor(this);
+  engine->add_actor(pid_, this);
 
   /* Now insert it in the global actor list and in the actor to run list */
-  XBT_DEBUG("Inserting [%p] %s(%s) in the to_run list", this, get_cname(), host_->get_cname());
-  simix_global->actors_to_run.push_back(this);
+  engine->add_actor_to_run_list_no_check(this);
 
   return this;
 }
 
 ActorImplPtr ActorImpl::create(const std::string& name, const ActorCode& code, void* data, s4u::Host* host,
-                               const std::unordered_map<std::string, std::string>* properties,
                                const ActorImpl* parent_actor)
 {
   XBT_DEBUG("Start actor %s@'%s'", name.c_str(), host->get_cname());
@@ -523,10 +502,6 @@ ActorImplPtr ActorImpl::create(const std::string& name, const ActorCode& code, v
   /* actor data */
   actor->set_user_data(data);
 
-  /* Add properties */
-  if (properties != nullptr)
-    actor->set_properties(*properties);
-
   actor->start(code);
 
   return actor;
@@ -538,13 +513,13 @@ void create_maestro(const std::function<void()>& code)
   auto* maestro = new ActorImpl(xbt::string(""), /*host*/ nullptr);
 
   if (not code) {
-    maestro->context_.reset(simix_global->context_factory->create_context(ActorCode(), maestro));
+    maestro->context_.reset(simix_global->get_context_factory()->create_context(ActorCode(), maestro));
   } else {
-    maestro->context_.reset(simix_global->context_factory->create_maestro(ActorCode(code), maestro));
+    maestro->context_.reset(simix_global->get_context_factory()->create_maestro(ActorCode(code), maestro));
   }
 
   maestro->simcall_.issuer_     = maestro;
-  simix_global->maestro_        = maestro;
+  simix_global->set_maestro(maestro);
 }
 
 } // namespace actor
@@ -553,7 +528,7 @@ void create_maestro(const std::function<void()>& code)
 
 int SIMIX_process_count() // XBT_ATTRIB_DEPRECATED_v329
 {
-  return simix_global->process_list.size();
+  return simgrid::kernel::EngineImpl::get_instance()->get_actor_list().size();
 }
 
 void* SIMIX_process_self_get_data() // XBT_ATTRIB_DEPRECATED_v329

@@ -40,9 +40,13 @@ class XBT_PUBLIC Host : public xbt::Extendable<Host> {
   friend vm::VMModel;            // Use the pimpl_cpu to compute the VM sharing
   friend vm::VirtualMachineImpl; // creates the the pimpl_cpu
   friend kernel::routing::NetZoneImpl;
+  friend surf::HostImpl; // call destructor from private implementation
+
+  // The private implementation, that never changes
+  surf::HostImpl* const pimpl_;
 
 public:
-  explicit Host(const std::string& name);
+  explicit Host(surf::HostImpl* pimpl) : pimpl_(pimpl) {}
 
 protected:
   virtual ~Host(); // Call destroy() instead of manually deleting it.
@@ -75,13 +79,13 @@ public:
   static Host* current();
 
   /** Retrieves the name of that host as a C++ string */
-  xbt::string const& get_name() const { return name_; }
+  xbt::string const& get_name() const;
   /** Retrieves the name of that host as a C string */
-  const char* get_cname() const { return name_.c_str(); }
+  const char* get_cname() const;
 
   kernel::routing::NetPoint* get_netpoint() const { return pimpl_netpoint_; }
 
-  int get_actor_count() const;
+  size_t get_actor_count() const;
   std::vector<ActorPtr> get_all_actors() const;
 
   /** Turns that host on if it was previously off
@@ -106,6 +110,21 @@ public:
 
   Host* set_state_profile(kernel::profile::Profile* p);
   Host* set_speed_profile(kernel::profile::Profile* p);
+
+  /** @brief Convert the CPU's speed from string to double */
+  static std::vector<double> convert_pstate_speed_vector(const std::vector<std::string>& speed_per_state);
+  /**
+   * @brief Set the CPU's speed
+   *
+   * @param speed_per_state list of powers for this processor (default power is at index 0)
+   */
+  Host* set_pstate_speed(const std::vector<double>& speed_per_state);
+  /**
+   * @brief Set the CPU's speed (string version)
+   *
+   * @throw std::invalid_argument if speed format is incorrect.
+   */
+  Host* set_pstate_speed(const std::vector<std::string>& speed_per_state);
 
   /** @brief Get the peak computing speed in flops/s at the current pstate, NOT taking the external load into account.
    *
@@ -144,14 +163,34 @@ public:
   int get_pstate() const;
   double get_pstate_speed(int pstate_index) const;
   Host* set_pstate(int pstate_index);
+  Host* set_coordinates(const std::string& coords);
 
   std::vector<Disk*> get_disks() const;
+  /**
+   * @brief Create and add disk in the host
+   *
+   * @param name Disk name
+   * @param read_bandwidth Reading speed of the disk
+   * @param write_bandwidth Writing speed of the disk
+   */
   Disk* create_disk(const std::string& name, double read_bandwidth, double write_bandwidth);
+  /**
+   * @brief Human-friendly version of create_disk function.
+   *
+   * @throw std::invalid_argument if read/write speeds are incorrect
+   */
+  Disk* create_disk(const std::string& name, const std::string& read_bandwidth, const std::string& write_bandwidth);
   void add_disk(const Disk* disk);
   void remove_disk(const std::string& disk_name);
 
   void route_to(const Host* dest, std::vector<Link*>& links, double* latency) const;
   void route_to(const Host* dest, std::vector<kernel::resource::LinkImpl*>& links, double* latency) const;
+
+  /**
+   * @brief Seal this host
+   * No more configuration is allowed after the seal
+   */
+  Host* seal();
 
 #ifndef DOXYGEN
   XBT_ATTRIB_DEPRECATED_v331("Please use Comm::sendto()") void sendto(Host* dest, double byte_amount);
@@ -161,7 +200,7 @@ public:
   XBT_ATTRIB_DEPRECATED_v330("Please use Host::sendto()") void send_to(Host* dest, double byte_amount);
 #endif
 
-  NetZone* get_englobing_zone();
+  NetZone* get_englobing_zone() const;
   /** Block the calling actor on an execution located on the called host
    *
    * It is not a problem if the actor is not located on the called host.
@@ -174,17 +213,15 @@ public:
 
   /** Block the calling actor on an execution located on the called host (with explicit priority) */
   void execute(double flops, double priority) const;
+  surf::HostImpl* get_impl() const { return pimpl_; }
 
 private:
-  xbt::string name_{"noname"};
-  kernel::routing::NetPoint* pimpl_netpoint_         = nullptr;
+  kernel::routing::NetPoint* pimpl_netpoint_ = nullptr;
 
 public:
 #ifndef DOXYGEN
   /** DO NOT USE DIRECTLY (@todo: these should be protected, once our code is clean) */
-  kernel::resource::Cpu* pimpl_cpu = nullptr;
-  // TODO, this could be a unique_ptr
-  surf::HostImpl* pimpl_ = nullptr;
+  kernel::resource::CpuImpl* pimpl_cpu = nullptr;
 #endif
 };
 } // namespace s4u

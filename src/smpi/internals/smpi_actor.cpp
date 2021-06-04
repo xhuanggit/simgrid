@@ -5,6 +5,8 @@
 
 #include "src/smpi/include/smpi_actor.hpp"
 #include "mc/mc.h"
+#include "simgrid/s4u/Engine.hpp"
+#include "simgrid/s4u/Mutex.hpp"
 #include "smpi_comm.hpp"
 #include "smpi_info.hpp"
 #include "src/mc/mc_replay.hpp"
@@ -163,12 +165,12 @@ xbt_os_timer_t ActorExt::timer()
 
 void ActorExt::simulated_start()
 {
-  simulated_ = SIMIX_get_clock();
+  simulated_ = s4u::Engine::get_clock();
 }
 
 double ActorExt::simulated_elapsed() const
 {
-  return SIMIX_get_clock() - simulated_;
+  return s4u::Engine::get_clock() - simulated_;
 }
 
 MPI_Comm ActorExt::comm_self()
@@ -176,7 +178,8 @@ MPI_Comm ActorExt::comm_self()
   if (comm_self_ == MPI_COMM_NULL) {
     auto* group = new Group(1);
     comm_self_  = new Comm(group, nullptr);
-    group->set_mapping(actor_, 0);
+    comm_self_->set_name("MPI_COMM_SELF");
+    group->set_mapping(actor_->get_pid(), 0);
   }
   return comm_self_;
 }
@@ -213,21 +216,12 @@ void ActorExt::init()
   xbt_assert(smpi_get_universe_size() != 0, "SimGrid was not initialized properly before entering MPI_Init. "
                                             "Aborting, please check compilation process and use smpirun.");
 
-  simgrid::s4u::Actor* self = simgrid::s4u::Actor::self();
-  // cheinrich: I'm not sure what the impact of the SMPI_switch_data_segment on this call is. I moved
-  // this up here so that I can set the privatized region before the switch.
   ActorExt* ext = smpi_process();
   // if we are in MPI_Init and argc handling has already been done.
   if (ext->initialized())
     return;
 
-  if (smpi_cfg_privatization() == SmpiPrivStrategies::MMAP) {
-    /* Now using the segment index of this process  */
-    ext->set_privatized_region(smpi_init_global_memory_segment_process());
-    /* Done at the process's creation */
-    SMPI_switch_data_segment(self);
-  }
-
+  simgrid::s4u::Actor* self = simgrid::s4u::Actor::self();
   ext->instance_id_ = self->get_property("instance_id");
   const int rank    = xbt_str_parse_int(self->get_property("rank"), "Cannot parse rank");
 
@@ -257,10 +251,13 @@ void ActorExt::bsend_buffer(void** buf, int* size)
   *size = bsend_buffer_size_;
 }
 
-void ActorExt::set_bsend_buffer(void* buf, int size)
+int ActorExt::set_bsend_buffer(void* buf, int size)
 {
+  if(buf!=nullptr && bsend_buffer_!=nullptr)
+    return MPI_ERR_BUFFER;
   bsend_buffer_     = buf;
   bsend_buffer_size_= size;
+  return MPI_SUCCESS;
 }
 
 } // namespace smpi

@@ -19,19 +19,19 @@ namespace routing {
  *  computational requirements, but also the highest memory requirements (both in platform file and in memory).
  */
 class XBT_PRIVATE FullZone : public RoutedZone {
+  std::vector<std::vector<std::unique_ptr<Route>>> routing_table_;
+  void do_seal() override;
+  /** @brief Check and resize (if necessary) the routing table */
+  void check_routing_table();
+
 public:
   using RoutedZone::RoutedZone;
   FullZone(const FullZone&) = delete;
   FullZone& operator=(const FullZone) = delete;
-  ~FullZone() override;
 
-  void get_local_route(NetPoint* src, NetPoint* dst, RouteCreationArgs* into, double* latency) override;
+  void get_local_route(const NetPoint* src, const NetPoint* dst, Route* into, double* latency) override;
   void add_route(NetPoint* src, NetPoint* dst, NetPoint* gw_src, NetPoint* gw_dst,
-                 std::vector<resource::LinkImpl*>& link_list, bool symmetrical) override;
-
-private:
-  std::vector<RouteCreationArgs*> routing_table_;
-  void do_seal() override;
+                 const std::vector<resource::LinkImpl*>& link_list, bool symmetrical) override;
 };
 } // namespace routing
 } // namespace kernel

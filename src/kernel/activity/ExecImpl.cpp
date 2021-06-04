@@ -7,6 +7,7 @@
 #include "simgrid/Exception.hpp"
 #include "simgrid/kernel/routing/NetPoint.hpp"
 #include "simgrid/modelchecker.h"
+#include "simgrid/s4u/Engine.hpp"
 #include "simgrid/s4u/Exec.hpp"
 #include "src/kernel/actor/SimcallObserver.hpp"
 #include "src/mc/mc_replay.hpp"
@@ -91,6 +92,7 @@ ExecImpl* ExecImpl::start()
       surf_action_    = host_model->execute_parallel(hosts_, flops_amounts_.data(), bytes_amounts_.data(), -1);
     }
     surf_action_->set_activity(this);
+    start_time_ = surf_action_->get_start_time();
   }
 
   XBT_DEBUG("Create execute synchro %p: %s", this, get_cname());
@@ -141,7 +143,7 @@ void ExecImpl::post()
     state_ = State::DONE;
   }
 
-  get_iface()->set_finish_time(surf_action_->get_finish_time());
+  finish_time_ = surf_action_->get_finish_time();
 
   clean_action();
   timeout_detector_.reset();
@@ -155,6 +157,7 @@ void ExecImpl::post()
 
 void ExecImpl::finish()
 {
+  XBT_DEBUG("ExecImpl::finish() in state %s", to_c_str(state_));
   while (not simcalls_.empty()) {
     smx_simcall_t simcall = simcalls_.front();
     simcalls_.pop_front();
@@ -167,9 +170,9 @@ void ExecImpl::finish()
       continue;                                 // if process handling comm is killed
     if (auto* observer =
             dynamic_cast<kernel::actor::ExecutionWaitanySimcall*>(simcall->observer_)) { // simcall is a wait_any?
-      const auto* execs = observer->get_execs();
+      const auto& execs = observer->get_execs();
 
-      for (auto* exec : *execs) {
+      for (auto* exec : execs) {
         exec->unregister_simcall(simcall);
 
         if (simcall->timeout_cb_) {
@@ -179,39 +182,30 @@ void ExecImpl::finish()
       }
 
       if (not MC_is_active() && not MC_record_replay_is_active()) {
-        auto element = std::find(execs->begin(), execs->end(), this);
-        int rank     = element != execs->end() ? static_cast<int>(std::distance(execs->begin(), element)) : -1;
+        auto element = std::find(execs.begin(), execs.end(), this);
+        int rank     = element != execs.end() ? static_cast<int>(std::distance(execs.begin(), element)) : -1;
         observer->set_result(rank);
       }
     }
     switch (state_) {
-      case State::DONE:
-        /* do nothing, synchro done */
-        XBT_DEBUG("ExecImpl::finish(): execution successful");
-        break;
-
       case State::FAILED:
-        XBT_DEBUG("ExecImpl::finish(): host '%s' failed", simcall->issuer_->get_host()->get_cname());
         simcall->issuer_->context_->set_wannadie();
         if (simcall->issuer_->get_host()->is_on())
-          simcall->issuer_->exception_ =
-              std::make_exception_ptr(simgrid::HostFailureException(XBT_THROW_POINT, "Host failed"));
+          simcall->issuer_->exception_ = std::make_exception_ptr(HostFailureException(XBT_THROW_POINT, "Host failed"));
         /* else, the actor will be killed with no possibility to survive */
         break;
 
       case State::CANCELED:
-        XBT_DEBUG("ExecImpl::finish(): execution canceled");
-        simcall->issuer_->exception_ =
-            std::make_exception_ptr(simgrid::CancelException(XBT_THROW_POINT, "Execution Canceled"));
+        simcall->issuer_->exception_ = std::make_exception_ptr(CancelException(XBT_THROW_POINT, "Execution Canceled"));
         break;
 
       case State::TIMEOUT:
-        XBT_DEBUG("ExecImpl::finish(): execution timeouted");
-        simcall->issuer_->exception_ = std::make_exception_ptr(simgrid::TimeoutException(XBT_THROW_POINT, "Timeouted"));
+        simcall->issuer_->exception_ = std::make_exception_ptr(TimeoutException(XBT_THROW_POINT, "Timeouted"));
         break;
 
       default:
-        xbt_die("Internal error in ExecImpl::finish(): unexpected synchro state %d", static_cast<int>(state_));
+        xbt_assert(state_ == State::DONE, "Internal error in ExecImpl::finish(): unexpected synchro state %s",
+                   to_c_str(state_));
     }
 
     simcall->issuer_->waiting_synchro_ = nullptr;
@@ -243,27 +237,26 @@ ActivityImpl* ExecImpl::migrate(s4u::Host* to)
   return this;
 }
 
-void ExecImpl::wait_any_for(actor::ActorImpl* issuer, const std::vector<ExecImpl*>* execs, double timeout)
+void ExecImpl::wait_any_for(actor::ActorImpl* issuer, const std::vector<ExecImpl*>& execs, double timeout)
 {
   if (timeout < 0.0) {
     issuer->simcall_.timeout_cb_ = nullptr;
   } else {
-    issuer->simcall_.timeout_cb_ = simgrid::simix::Timer::set(SIMIX_get_clock() + timeout, [issuer, execs]() {
+    issuer->simcall_.timeout_cb_ = timer::Timer::set(s4u::Engine::get_clock() + timeout, [issuer, &execs]() {
       issuer->simcall_.timeout_cb_ = nullptr;
-      for (auto* exec : *execs)
+      for (auto* exec : execs)
         exec->unregister_simcall(&issuer->simcall_);
-      // default result (-1) is set in mc::ExecutionWaitanySimcall
+      // default result (-1) is set in actor::ExecutionWaitanySimcall
       issuer->simcall_answer();
     });
   }
 
-  for (auto* exec : *execs) {
+  for (auto* exec : execs) {
     /* associate this simcall to the the synchro */
     exec->simcalls_.push_back(&issuer->simcall_);
 
     /* see if the synchro is already finished */
-    if (exec->state_ != simgrid::kernel::activity::State::WAITING &&
-        exec->state_ != simgrid::kernel::activity::State::RUNNING) {
+    if (exec->state_ != State::WAITING && exec->state_ != State::RUNNING) {
       exec->finish();
       break;
     }

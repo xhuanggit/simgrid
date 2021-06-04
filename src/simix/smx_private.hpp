@@ -10,57 +10,33 @@
 #include "src/kernel/actor/ActorImpl.hpp"
 #include "src/kernel/context/Context.hpp"
 
-#include <boost/intrusive/list.hpp>
-#include <mutex>
-#include <unordered_map>
-#include <vector>
-
 /********************************** Simix Global ******************************/
 
 namespace simgrid {
 namespace simix {
 
 class Global {
+  kernel::context::ContextFactory* context_factory_ = nullptr;
+  kernel::actor::ActorImpl* maestro_                = nullptr;
+
 public:
-  bool execute_tasks();
-  /**
-   * Garbage collection
-   *
-   * Should be called some time to time to free the memory allocated for actors that have finished (or killed).
-   */
-  void empty_trash();
-  void run_all_actors();
-  void wake_all_waiting_actors() const;
-  void display_all_actor_status() const;
+  bool is_maestro(const kernel::actor::ActorImpl* actor) const { return actor == maestro_; }
+  void set_maestro(kernel::actor::ActorImpl* actor) { maestro_ = actor; }
+  kernel::actor::ActorImpl* get_maestro() const { return maestro_; }
+  void destroy_maestro()
+  {
+    delete maestro_;
+    maestro_ = nullptr;
+  }
 
-  kernel::context::ContextFactory* context_factory = nullptr;
-  std::vector<kernel::actor::ActorImpl*> actors_to_run;
-  std::vector<kernel::actor::ActorImpl*> actors_that_ran;
-  std::map<aid_t, kernel::actor::ActorImpl*> process_list;
-  boost::intrusive::list<kernel::actor::ActorImpl,
-                         boost::intrusive::member_hook<kernel::actor::ActorImpl, boost::intrusive::list_member_hook<>,
-                                                       &kernel::actor::ActorImpl::smx_destroy_list_hook>>
-      actors_to_destroy;
-#if SIMGRID_HAVE_MC
-  /* MCer cannot read members process_list and actors_to_destroy above in the remote process, so we copy the info it
-   * needs in a dynar.
-   * FIXME: This is supposed to be a temporary hack.
-   * A better solution would be to change the split between MCer and MCed, where the responsibility
-   *   to compute the list of the enabled transitions goes to the MCed.
-   * That way, the MCer would not need to have the list of actors on its side.
-   * These info could be published by the MCed to the MCer in a way inspired of vd.so
-   */
-  xbt_dynar_t actors_vector      = xbt_dynar_new(sizeof(kernel::actor::ActorImpl*), nullptr);
-  xbt_dynar_t dead_actors_vector = xbt_dynar_new(sizeof(kernel::actor::ActorImpl*), nullptr);
-#endif
-  kernel::actor::ActorImpl* maestro_ = nullptr;
-
-  std::mutex mutex;
-
-  std::vector<xbt::Task<void()>> tasks;
-  std::vector<xbt::Task<void()>> tasksTemp;
-
-  std::vector<kernel::actor::ActorImpl*> daemons;
+  kernel::context::ContextFactory* get_context_factory() const { return context_factory_; }
+  void set_context_factory(kernel::context::ContextFactory* factory) { context_factory_ = factory; }
+  bool has_context_factory() const { return context_factory_ != nullptr; }
+  void destroy_context_factory()
+  {
+    delete context_factory_;
+    context_factory_ = nullptr;
+  }
 };
 }
 }

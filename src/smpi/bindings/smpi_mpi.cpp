@@ -48,9 +48,17 @@ XBT_LOG_NEW_DEFAULT_SUBCATEGORY(smpi_mpi, smpi, "Logging specific to SMPI ,(mpi)
       MPI_Errhandler err = (errhan) ? (errhan)->errhandler() : MPI_ERRHANDLER_NULL;                                    \
       if (err == MPI_ERRHANDLER_NULL || err == MPI_ERRORS_RETURN)                                                      \
         XBT_WARN("%s - returned %.*s instead of MPI_SUCCESS", __func__, error_size, error_string);                     \
-      else if (err == MPI_ERRORS_ARE_FATAL)                                                                            \
+      else if (err == MPI_ERRORS_ARE_FATAL){                                                                           \
+        if (xbt_log_no_loc)                                                                                            \
+          XBT_INFO("The backtrace would be displayed here if --log=no_loc would not have been passed");                \
+        else{                                                                                                          \
+          XBT_INFO("Backtrace of the run : if incomplete, run smpirun with -keep-temps. To hide, use --log=no_loc");   \
+          xbt_backtrace_display_current();                                                                             \
+        }                                                                                                              \
+        simgrid::smpi::utils::print_current_handle();                                                                  \
+        simgrid::smpi::utils::print_buffer_info();                                                                     \
         xbt_die("%s - returned %.*s instead of MPI_SUCCESS", __func__, error_size, error_string);                      \
-      else                                                                                                             \
+      } else                                                                                                           \
         err->call((errhan), ret);                                                                                      \
       if (err != MPI_ERRHANDLER_NULL)                                                                                  \
         simgrid::smpi::Errhandler::unref(err);                                                                         \
@@ -60,7 +68,7 @@ XBT_LOG_NEW_DEFAULT_SUBCATEGORY(smpi_mpi, smpi, "Logging specific to SMPI ,(mpi)
     return ret;                                                                                                        \
   }
 
-#define WRAPPED_PMPI_CALL_ERRHANDLER_COMM(type, name, args, args2) WRAPPED_PMPI_CALL_ERRHANDLER(type, name, args, args2, comm)
+#define WRAPPED_PMPI_CALL_ERRHANDLER_COMM(type, name, args, args2) WRAPPED_PMPI_CALL_ERRHANDLER(type, name, args, args2, (comm == MPI_COMM_NULL) ? MPI_COMM_WORLD : comm)
 #define WRAPPED_PMPI_CALL_ERRHANDLER_WIN(type, name, args, args2) WRAPPED_PMPI_CALL_ERRHANDLER(type, name, args, args2, win)
 #define WRAPPED_PMPI_CALL_ERRHANDLER_FILE(type, name, args, args2) WRAPPED_PMPI_CALL_ERRHANDLER(type, name, args, args2, fh)
 #define WRAPPED_PMPI_CALL(type, name, args, args2) WRAPPED_PMPI_CALL_ERRHANDLER(type, name, args, args2, MPI_COMM_WORLD)
@@ -137,6 +145,7 @@ WRAPPED_PMPI_CALL_ERRHANDLER_COMM(int,MPI_Comm_size,(MPI_Comm comm, int *size),(
 WRAPPED_PMPI_CALL_ERRHANDLER_COMM(int,MPI_Comm_split,(MPI_Comm comm, int color, int key, MPI_Comm* comm_out),(comm, color, key, comm_out))
 WRAPPED_PMPI_CALL_ERRHANDLER_COMM(int,MPI_Comm_split_type,(MPI_Comm comm, int split_type, int key, MPI_Info info, MPI_Comm *newcomm),(comm, split_type, key, info, newcomm))
 WRAPPED_PMPI_CALL_ERRHANDLER_COMM(int,MPI_Comm_create_group,(MPI_Comm comm, MPI_Group group, int tag, MPI_Comm* comm_out),(comm, group, tag, comm_out))
+WRAPPED_PMPI_CALL_ERRHANDLER_COMM(int,MPI_Comm_test_inter,(MPI_Comm comm, int* flag) ,(comm, flag))
 WRAPPED_PMPI_CALL_ERRHANDLER_COMM(int,MPI_Comm_call_errhandler,(MPI_Comm comm,int errorcode),(comm, errorcode))
 WRAPPED_PMPI_CALL(int,MPI_Comm_create_errhandler,( MPI_Comm_errhandler_fn *function, MPI_Errhandler *errhandler),( function, errhandler))
 WRAPPED_PMPI_CALL_ERRHANDLER_COMM(int,MPI_Comm_get_errhandler,(MPI_Comm comm, MPI_Errhandler* errhandler) ,(comm, errhandler))
@@ -407,7 +416,6 @@ UNIMPLEMENTED_WRAPPED_PMPI_CALL(int,MPI_Comm_remote_group,(MPI_Comm comm, MPI_Gr
 UNIMPLEMENTED_WRAPPED_PMPI_CALL(int,MPI_Comm_remote_size,(MPI_Comm comm, int* size) ,(comm, size))
 UNIMPLEMENTED_WRAPPED_PMPI_CALL(int,MPI_Comm_spawn,(const char *command, char **argv, int maxprocs, MPI_Info info, int root, MPI_Comm comm, MPI_Comm *intercomm, int* array_of_errcodes),( command, argv, maxprocs, info, root, comm, intercomm, array_of_errcodes))
 UNIMPLEMENTED_WRAPPED_PMPI_CALL(int,MPI_Comm_spawn_multiple,(int count, char **array_of_commands, char*** array_of_argv, int* array_of_maxprocs, MPI_Info* array_of_info, int root, MPI_Comm comm, MPI_Comm *intercomm, int* array_of_errcodes), (count, array_of_commands, array_of_argv, array_of_maxprocs, array_of_info, root, comm, intercomm, array_of_errcodes))
-UNIMPLEMENTED_WRAPPED_PMPI_CALL(int,MPI_Comm_test_inter,(MPI_Comm comm, int* flag) ,(comm, flag))
 UNIMPLEMENTED_WRAPPED_PMPI_CALL(int, MPI_Dist_graph_create, (MPI_Comm comm_old, int n, const int* sources, const int* degrees, const int* destinations, const int* weights, MPI_Info info, int reorder, MPI_Comm* comm_dist_graph), (comm_old, n, sources, degrees, destinations, weights, info, reorder, comm_dist_graph))
 UNIMPLEMENTED_WRAPPED_PMPI_CALL(int, MPI_Dist_graph_create_adjacent, (MPI_Comm comm_old, int indegree, const int* sources, const int* sourceweights, int outdegree, const int* destinations, const int* destweights, MPI_Info info, int reorder, MPI_Comm* comm_dist_graph), (comm_old, indegree, sources, sourceweights, outdegree, destinations, destweights, info, reorder, comm_dist_graph))
 UNIMPLEMENTED_WRAPPED_PMPI_CALL(int, MPI_Dist_graph_neighbors, (MPI_Comm comm, int maxindegree, int* sources, int* sourceweights, int maxoutdegree, int* destinations, int* destweights), (comm, maxindegree, sources, sourceweights, maxoutdegree, destinations, destweights))

@@ -3,8 +3,11 @@
 /* This program is free software; you can redistribute it and/or modify it
  * under the terms of the license (GNU LGPL) which comes with this package. */
 
+#include "simgrid/kernel/routing/NetPoint.hpp"
+#include "simgrid/s4u/Engine.hpp"
+#include "simgrid/s4u/Host.hpp"
+#include "src/kernel/EngineImpl.hpp"
 #include "src/plugins/vm/VirtualMachineImpl.hpp"
-#include "src/simix/smx_private.hpp"
 
 #include <string>
 
@@ -23,11 +26,16 @@ namespace surf {
 /************
  * Resource *
  ************/
-HostImpl::HostImpl(s4u::Host* host) : piface_(host)
+HostImpl::HostImpl(const std::string& name, s4u::Host* piface) : piface_(this), name_(name)
 {
-  /* The VM wants to reinstall a new HostImpl, but we don't want to leak the previously existing one */
-  delete piface_->pimpl_;
-  piface_->pimpl_ = this;
+  xbt_assert(s4u::Host::by_name_or_null(name_) == nullptr, "Refusing to create a second host named '%s'.", get_cname());
+  s4u::Engine::get_instance()->host_register(name_, piface);
+}
+
+HostImpl::HostImpl(const std::string& name) : piface_(this), name_(name)
+{
+  xbt_assert(s4u::Host::by_name_or_null(name_) == nullptr, "Refusing to create a second host named '%s'.", get_cname());
+  s4u::Engine::get_instance()->host_register(name_, &piface_);
 }
 
 HostImpl::~HostImpl()
@@ -38,7 +46,7 @@ HostImpl::~HostImpl()
     for (auto const& actor : actor_list_)
       msg += "\n\t" + std::string(actor.get_name());
 
-    simix_global->display_all_actor_status();
+    kernel::EngineImpl::get_instance()->display_all_actor_status();
     xbt_die("%s", msg.c_str());
   }
   for (auto const& arg : actors_at_boot_)
@@ -49,6 +57,17 @@ HostImpl::~HostImpl()
     d->destroy();
 }
 
+/** @brief Fire the required callbacks and destroy the object
+ *
+ * Don't delete directly a Host, call h->destroy() instead.
+ */
+void HostImpl::destroy()
+{
+  s4u::Host::on_destruction(*this->get_iface());
+  s4u::Engine::get_instance()->host_unregister(std::string(name_));
+  delete this;
+}
+
 /** Re-starts all the actors that are marked as restartable.
  *
  * Weird things will happen if you turn on a host that is already on. S4U is fool-proof, not this.
@@ -57,8 +76,9 @@ void HostImpl::turn_on() const
 {
   for (auto const& arg : actors_at_boot_) {
     XBT_DEBUG("Booting Actor %s(%s) right now", arg->name.c_str(), arg->host->get_cname());
-    simgrid::kernel::actor::ActorImplPtr actor = simgrid::kernel::actor::ActorImpl::create(
-        arg->name, arg->code, nullptr, arg->host, arg->properties.get(), nullptr);
+    simgrid::kernel::actor::ActorImplPtr actor =
+        simgrid::kernel::actor::ActorImpl::create(arg->name, arg->code, nullptr, arg->host, nullptr);
+    actor->set_properties(arg->properties);
     if (arg->on_exit)
       *actor->on_exit = *arg->on_exit;
     if (arg->kill_time >= 0)
@@ -109,11 +129,11 @@ std::vector<s4u::Disk*> HostImpl::get_disks() const
   return disks;
 }
 
-void HostImpl::set_disks(const std::vector<kernel::resource::DiskImpl*>& disks, s4u::Host* host)
+s4u::Disk* HostImpl::create_disk(const std::string& name, double read_bandwidth, double write_bandwidth)
 {
-  disks_ = disks;
-  for (auto d : disks_)
-    d->set_host(host);
+  auto disk = piface_.get_netpoint()->get_englobing_zone()->get_disk_model()->create_disk(name, read_bandwidth,
+                                                                                          write_bandwidth);
+  return disk->set_host(&piface_)->get_iface();
 }
 
 void HostImpl::add_disk(const s4u::Disk* disk)
@@ -133,5 +153,18 @@ void HostImpl::remove_disk(const std::string& disk_name)
   }
 }
 
+void HostImpl::seal()
+{
+  if (sealed_) {
+    return;
+  }
+  // seals host's CPU
+  get_iface()->pimpl_cpu->seal();
+  sealed_ = true;
+
+  /* seal its disks */
+  for (auto* disk : disks_)
+    disk->seal();
+}
 } // namespace surf
 } // namespace simgrid

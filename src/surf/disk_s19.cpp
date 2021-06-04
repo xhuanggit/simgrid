@@ -10,6 +10,7 @@
 #include "simgrid/s4u/Host.hpp"
 #include "src/kernel/EngineImpl.hpp"
 #include "src/kernel/lmm/maxmin.hpp"
+#include "src/kernel/resource/profile/Event.hpp"
 #include "src/surf/xml/platf.hpp"
 #include "surf/surf.hpp"
 
@@ -35,11 +36,6 @@ DiskImpl* DiskS19Model::create_disk(const std::string& name, double read_bandwid
   return (new DiskS19(name, read_bandwidth, write_bandwidth))->set_model(this);
 }
 
-double DiskS19Model::next_occurring_event(double now)
-{
-  return DiskModel::next_occurring_event_full(now);
-}
-
 void DiskS19Model::update_actions_state(double /*now*/, double delta)
 {
   for (auto it = std::begin(*get_started_action_set()); it != std::end(*get_started_action_set());) {
@@ -55,77 +51,93 @@ void DiskS19Model::update_actions_state(double /*now*/, double delta)
   }
 }
 
+DiskAction* DiskS19Model::io_start(const DiskImpl* disk, sg_size_t size, s4u::Io::OpType type)
+{
+  auto* action = new DiskS19Action(this, static_cast<double>(size), not disk->is_on());
+  get_maxmin_system()->expand(disk->get_constraint(), action->get_variable(), 1.0);
+  switch (type) {
+    case s4u::Io::OpType::READ:
+      get_maxmin_system()->expand(disk->get_read_constraint(), action->get_variable(), 1.0);
+      break;
+    case s4u::Io::OpType::WRITE:
+      get_maxmin_system()->expand(disk->get_write_constraint(), action->get_variable(), 1.0);
+      break;
+    default:
+      THROW_UNIMPLEMENTED;
+  }
+  return action;
+}
+
 /************
  * Resource *
  ************/
-DiskAction* DiskS19::io_start(sg_size_t size, s4u::Io::OpType type)
+void DiskS19::update_penalties(double delta) const
 {
-  return new DiskS19Action(get_model(), static_cast<double>(size), not is_on(), this, type);
+  const kernel::lmm::Element* elem     = nullptr;
+  const kernel::lmm::Element* nextelem = nullptr;
+  int numelem                          = 0;
+  while (const auto* var = get_constraint()->get_variable_safe(&elem, &nextelem, &numelem)) {
+    auto* action = static_cast<DiskS19Action*>(var->get_id());
+    action->sharing_penalty_ += delta;
+    if (not action->is_suspended())
+      get_model()->get_maxmin_system()->update_variable_penalty(action->get_variable(), action->sharing_penalty_);
+  }
 }
 
-DiskAction* DiskS19::read(sg_size_t size)
+void DiskS19::set_read_bandwidth(double value)
 {
-  return new DiskS19Action(get_model(), static_cast<double>(size), not is_on(), this, s4u::Io::OpType::READ);
+  read_bw_.peak = value;
+
+  get_model()->get_maxmin_system()->update_constraint_bound(get_constraint(), read_bw_.peak * read_bw_.scale);
+
+  double delta = 1.0 / value - 1.0 / (read_bw_.peak * read_bw_.scale);
+  update_penalties(delta);
 }
 
-DiskAction* DiskS19::write(sg_size_t size)
+void DiskS19::set_write_bandwidth(double value)
 {
-  return new DiskS19Action(get_model(), static_cast<double>(size), not is_on(), this, s4u::Io::OpType::WRITE);
+  write_bw_.peak = value;
+
+  get_model()->get_maxmin_system()->update_constraint_bound(get_constraint(), write_bw_.peak * write_bw_.scale);
+
+  double delta = 1.0 / value - 1.0 / (write_bw_.peak * write_bw_.scale);
+  update_penalties(delta);
+}
+
+void DiskS19::apply_event(kernel::profile::Event* triggered, double value)
+{
+  /* Find out which of my iterators was triggered, and react accordingly */
+  if (triggered == read_bw_.event) {
+    set_read_bandwidth(value);
+    tmgr_trace_event_unref(&read_bw_.event);
+
+  } else if (triggered == write_bw_.event) {
+    set_write_bandwidth(value);
+    tmgr_trace_event_unref(&write_bw_.event);
+
+  } else if (triggered == state_event_) {
+    if (value > 0)
+      turn_on();
+    else
+      turn_off();
+    tmgr_trace_event_unref(&state_event_);
+  } else {
+    xbt_die("Unknown event!\n");
+  }
+
+  XBT_DEBUG("There was a resource state event, need to update actions related to the constraint (%p)",
+            get_constraint());
 }
 
 /**********
  * Action *
  **********/
 
-DiskS19Action::DiskS19Action(Model* model, double cost, bool failed, DiskImpl* disk, s4u::Io::OpType type)
-    : DiskAction(model, cost, failed, model->get_maxmin_system()->variable_new(this, 1.0, -1.0, 3), disk, type)
+DiskS19Action::DiskS19Action(Model* model, double cost, bool failed)
+    : DiskAction(model, cost, failed, model->get_maxmin_system()->variable_new(this, 1.0, -1.0, 3))
 {
-  XBT_IN("(%s,%g", disk->get_cname(), cost);
-
-  // Must be less than the max bandwidth for all actions
-  model->get_maxmin_system()->expand(disk->get_constraint(), get_variable(), 1.0);
-  switch (type) {
-    case s4u::Io::OpType::READ:
-      model->get_maxmin_system()->expand(disk->get_read_constraint(), get_variable(), 1.0);
-      break;
-    case s4u::Io::OpType::WRITE:
-      model->get_maxmin_system()->expand(disk->get_write_constraint(), get_variable(), 1.0);
-      break;
-    default:
-      THROW_UNIMPLEMENTED;
-  }
-  XBT_OUT();
 }
 
-void DiskS19Action::cancel()
-{
-  set_state(Action::State::FAILED);
-}
-
-void DiskS19Action::suspend()
-{
-  XBT_IN("(%p)", this);
-  if (is_running()) {
-    get_model()->get_maxmin_system()->update_variable_penalty(get_variable(), 0.0);
-    set_suspend_state(Action::SuspendStates::SUSPENDED);
-  }
-  XBT_OUT();
-}
-
-void DiskS19Action::resume()
-{
-  THROW_UNIMPLEMENTED;
-}
-
-void DiskS19Action::set_max_duration(double /*duration*/)
-{
-  THROW_UNIMPLEMENTED;
-}
-
-void DiskS19Action::set_sharing_penalty(double)
-{
-  THROW_UNIMPLEMENTED;
-}
 void DiskS19Action::update_remains_lazy(double /*now*/)
 {
   THROW_IMPOSSIBLE;

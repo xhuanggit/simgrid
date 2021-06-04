@@ -41,14 +41,14 @@ void MigrationRx::operator()()
 
   /* Update the vm location */
   /* precopy migration makes the VM temporally paused */
-  xbt_assert(vm_->get_state() == s4u::VirtualMachine::state::SUSPENDED);
+  xbt_assert(vm_->get_state() == s4u::VirtualMachine::State::SUSPENDED);
 
   /* Update the vm location and resume it */
   vm_->set_pm(dst_pm_);
   vm_->resume();
 
   // Now the VM is running on the new host (the migration is completed) (even if the SRC crash)
-  vm_->get_impl()->end_migration();
+  vm_->get_vm_impl()->end_migration();
   XBT_DEBUG("VM(%s) moved from PM(%s) to PM(%s)", vm_->get_cname(), src_pm_->get_cname(), dst_pm_->get_cname());
 
   if (TRACE_vm_is_enabled()) {
@@ -274,11 +274,11 @@ void MigrationTx::operator()()
 
 static void onVirtualMachineShutdown(simgrid::s4u::VirtualMachine const& vm)
 {
-  if (vm.get_impl()->is_migrating()) {
+  if (vm.get_vm_impl()->is_migrating()) {
     vm.extension<simgrid::vm::VmMigrationExt>()->rx_->kill();
     vm.extension<simgrid::vm::VmMigrationExt>()->tx_->kill();
     vm.extension<simgrid::vm::VmMigrationExt>()->issuer_->kill();
-    vm.get_impl()->end_migration();
+    vm.get_vm_impl()->end_migration();
   }
 }
 
@@ -308,7 +308,7 @@ simgrid::s4u::VirtualMachine* sg_vm_create_migratable(simgrid::s4u::Host* pm, co
 
 int sg_vm_is_migrating(const simgrid::s4u::VirtualMachine* vm)
 {
-  return vm->get_impl()->is_migrating();
+  return vm->get_vm_impl()->is_migrating();
 }
 
 void sg_vm_migrate(simgrid::s4u::VirtualMachine* vm, simgrid::s4u::Host* dst_pm)
@@ -323,16 +323,16 @@ void sg_vm_migrate(simgrid::s4u::VirtualMachine* vm, simgrid::s4u::Host* dst_pm)
     throw simgrid::VmFailureException(
         XBT_THROW_POINT, simgrid::xbt::string_printf("Cannot migrate VM '%s' to host '%s', which is offline.",
                                                      vm->get_cname(), dst_pm->get_cname()));
-  if (vm->get_state() != simgrid::s4u::VirtualMachine::state::RUNNING)
+  if (vm->get_state() != simgrid::s4u::VirtualMachine::State::RUNNING)
     throw simgrid::VmFailureException(
         XBT_THROW_POINT,
         simgrid::xbt::string_printf("Cannot migrate VM '%s' that is not running yet.", vm->get_cname()));
-  if (vm->get_impl()->is_migrating())
+  if (vm->get_vm_impl()->is_migrating())
     throw simgrid::VmFailureException(
         XBT_THROW_POINT,
         simgrid::xbt::string_printf("Cannot migrate VM '%s' that is already migrating.", vm->get_cname()));
 
-  vm->get_impl()->start_migration();
+  vm->get_vm_impl()->start_migration();
   simgrid::s4u::VirtualMachine::on_migration_start(*vm);
 
   std::string rx_name =
@@ -355,6 +355,6 @@ void sg_vm_migrate(simgrid::s4u::VirtualMachine* vm, simgrid::s4u::Host* dst_pm)
   tx->join();
   rx->join();
 
-  vm->get_impl()->end_migration();
+  vm->get_vm_impl()->end_migration();
   simgrid::s4u::VirtualMachine::on_migration_end(*vm);
 }

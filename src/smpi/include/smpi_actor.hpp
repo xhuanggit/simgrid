@@ -75,6 +75,7 @@ public:
   void simulated_start();
   double simulated_elapsed() const;
   MPI_Comm comm_world() const;
+  bool comm_self_is_set() const { return (comm_self_ != MPI_COMM_NULL); };
   MPI_Comm comm_self();
   MPI_Comm comm_intra();
   void set_comm_intra(MPI_Comm comm);
@@ -86,7 +87,7 @@ public:
   void set_optind(int optind);
   MPI_Info info_env();
   void bsend_buffer(void** buf, int* size);
-  void set_bsend_buffer(void* buf, int size);
+  int set_bsend_buffer(void* buf, int size);
 };
 
 } // namespace smpi

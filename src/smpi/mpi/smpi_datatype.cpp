@@ -21,11 +21,11 @@ XBT_LOG_NEW_DEFAULT_SUBCATEGORY(smpi_datatype, smpi, "Logging specific to SMPI (
 
 static std::unordered_map<std::string, simgrid::smpi::Datatype*> id2type_lookup;
 
-#define CREATE_MPI_DATATYPE(name, id, type)                                                                            \
+#define CREATE_MPI_DATATYPE(name, id, type, flag)                                                                            \
   simgrid::smpi::Datatype _XBT_CONCAT(smpi_MPI_, name)((char*)"MPI_"#name, (id), sizeof(type), /* size */   \
                                                          0,                                               /* lb */     \
                                                          sizeof(type), /* ub = lb + size */                            \
-                                                         DT_FLAG_BASIC /* flags */                                     \
+                                                         DT_FLAG_BASIC | flag /* flags */                                     \
                                                          );
 
 #define CREATE_MPI_DATATYPE_NULL(name, id)                                                                             \
@@ -37,71 +37,71 @@ static std::unordered_map<std::string, simgrid::smpi::Datatype*> id2type_lookup;
 
 // Predefined data types
 CREATE_MPI_DATATYPE_NULL(DATATYPE_NULL, -1)
-CREATE_MPI_DATATYPE(DOUBLE, 0, double)
-CREATE_MPI_DATATYPE(INT, 1, int)
-CREATE_MPI_DATATYPE(CHAR, 2, char)
-CREATE_MPI_DATATYPE(SHORT, 3, short)
-CREATE_MPI_DATATYPE(LONG, 4, long)
-CREATE_MPI_DATATYPE(FLOAT, 5, float)
-CREATE_MPI_DATATYPE(BYTE, 6, int8_t)
-CREATE_MPI_DATATYPE(LONG_LONG, 7, long long)
-CREATE_MPI_DATATYPE(SIGNED_CHAR, 8, signed char)
-CREATE_MPI_DATATYPE(UNSIGNED_CHAR, 9, unsigned char)
-CREATE_MPI_DATATYPE(UNSIGNED_SHORT, 10, unsigned short)
-CREATE_MPI_DATATYPE(UNSIGNED, 11, unsigned int)
-CREATE_MPI_DATATYPE(UNSIGNED_LONG, 12, unsigned long)
-CREATE_MPI_DATATYPE(UNSIGNED_LONG_LONG, 13, unsigned long long)
-CREATE_MPI_DATATYPE(LONG_DOUBLE, 14, long double)
-CREATE_MPI_DATATYPE(WCHAR, 15, wchar_t)
-CREATE_MPI_DATATYPE(C_BOOL, 16, bool)
-CREATE_MPI_DATATYPE(INT8_T, 17, int8_t)
-CREATE_MPI_DATATYPE(INT16_T, 18, int16_t)
-CREATE_MPI_DATATYPE(INT32_T, 19, int32_t)
-CREATE_MPI_DATATYPE(INT64_T, 20, int64_t)
-CREATE_MPI_DATATYPE(UINT8_T, 21, uint8_t)
-CREATE_MPI_DATATYPE(UINT16_T, 22, uint16_t)
-CREATE_MPI_DATATYPE(UINT32_T, 23, uint32_t)
-CREATE_MPI_DATATYPE(UINT64_T, 24, uint64_t)
-CREATE_MPI_DATATYPE(C_FLOAT_COMPLEX, 25, float _Complex)
-CREATE_MPI_DATATYPE(C_DOUBLE_COMPLEX, 26, double _Complex)
-CREATE_MPI_DATATYPE(C_LONG_DOUBLE_COMPLEX, 27, long double _Complex)
-CREATE_MPI_DATATYPE(AINT, 28, MPI_Aint)
-CREATE_MPI_DATATYPE(OFFSET, 29, MPI_Offset)
+CREATE_MPI_DATATYPE(DOUBLE, 0, double, DT_FLAG_FP)
+CREATE_MPI_DATATYPE(INT, 1, int, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(CHAR, 2, char, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(SHORT, 3, short, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(LONG, 4, long, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(FLOAT, 5, float, DT_FLAG_FP)
+CREATE_MPI_DATATYPE(BYTE, 6, int8_t, DT_FLAG_BYTE)
+CREATE_MPI_DATATYPE(LONG_LONG, 7, long long, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(SIGNED_CHAR, 8, signed char, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(UNSIGNED_CHAR, 9, unsigned char, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(UNSIGNED_SHORT, 10, unsigned short, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(UNSIGNED, 11, unsigned int, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(UNSIGNED_LONG, 12, unsigned long, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(UNSIGNED_LONG_LONG, 13, unsigned long long, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(LONG_DOUBLE, 14, long double, DT_FLAG_FP)
+CREATE_MPI_DATATYPE(WCHAR, 15, wchar_t, DT_FLAG_BASIC)
+CREATE_MPI_DATATYPE(C_BOOL, 16, bool, DT_FLAG_LOGICAL)
+CREATE_MPI_DATATYPE(INT8_T, 17, int8_t, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(INT16_T, 18, int16_t, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(INT32_T, 19, int32_t, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(INT64_T, 20, int64_t, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(UINT8_T, 21, uint8_t, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(UINT16_T, 22, uint16_t, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(UINT32_T, 23, uint32_t, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(UINT64_T, 24, uint64_t, DT_FLAG_C_INTEGER)
+CREATE_MPI_DATATYPE(C_FLOAT_COMPLEX, 25, float _Complex, DT_FLAG_COMPLEX)
+CREATE_MPI_DATATYPE(C_DOUBLE_COMPLEX, 26, double _Complex, DT_FLAG_COMPLEX)
+CREATE_MPI_DATATYPE(C_LONG_DOUBLE_COMPLEX, 27, long double _Complex, DT_FLAG_COMPLEX)
+CREATE_MPI_DATATYPE(AINT, 28, MPI_Aint, DT_FLAG_MULTILANG)
+CREATE_MPI_DATATYPE(OFFSET, 29, MPI_Offset, DT_FLAG_MULTILANG)
 
-CREATE_MPI_DATATYPE(FLOAT_INT, 30, float_int)
-CREATE_MPI_DATATYPE(LONG_INT, 31, long_int)
-CREATE_MPI_DATATYPE(DOUBLE_INT, 32, double_int)
-CREATE_MPI_DATATYPE(SHORT_INT, 33, short_int)
-CREATE_MPI_DATATYPE(2INT, 34, int_int)
-CREATE_MPI_DATATYPE(2FLOAT, 35, float_float)
-CREATE_MPI_DATATYPE(2DOUBLE, 36, double_double)
-CREATE_MPI_DATATYPE(2LONG, 37, long_long)
+CREATE_MPI_DATATYPE(FLOAT_INT, 30, float_int, DT_FLAG_REDUCTION)
+CREATE_MPI_DATATYPE(LONG_INT, 31, long_int, DT_FLAG_REDUCTION)
+CREATE_MPI_DATATYPE(DOUBLE_INT, 32, double_int, DT_FLAG_REDUCTION)
+CREATE_MPI_DATATYPE(SHORT_INT, 33, short_int, DT_FLAG_REDUCTION)
+CREATE_MPI_DATATYPE(2INT, 34, int_int, DT_FLAG_REDUCTION)
+CREATE_MPI_DATATYPE(2FLOAT, 35, float_float, DT_FLAG_REDUCTION)
+CREATE_MPI_DATATYPE(2DOUBLE, 36, double_double, DT_FLAG_REDUCTION)
+CREATE_MPI_DATATYPE(2LONG, 37, long_long, DT_FLAG_REDUCTION)
 
-CREATE_MPI_DATATYPE(REAL, 38, float)
-CREATE_MPI_DATATYPE(REAL4, 39, float)
-CREATE_MPI_DATATYPE(REAL8, 40, double)
-CREATE_MPI_DATATYPE(REAL16, 41, long double)
-CREATE_MPI_DATATYPE(COMPLEX8, 42, float_float)
-CREATE_MPI_DATATYPE(COMPLEX16, 43, double_double)
-CREATE_MPI_DATATYPE(COMPLEX32, 44, double_double)
-CREATE_MPI_DATATYPE(INTEGER1, 45, int)
-CREATE_MPI_DATATYPE(INTEGER2, 46, int16_t)
-CREATE_MPI_DATATYPE(INTEGER4, 47, int32_t)
-CREATE_MPI_DATATYPE(INTEGER8, 48, int64_t)
-CREATE_MPI_DATATYPE(INTEGER16, 49, integer128_t)
+CREATE_MPI_DATATYPE(REAL, 38, float, DT_FLAG_FP)
+CREATE_MPI_DATATYPE(REAL4, 39, float, DT_FLAG_FP)
+CREATE_MPI_DATATYPE(REAL8, 40, double, DT_FLAG_FP)
+CREATE_MPI_DATATYPE(REAL16, 41, long double, DT_FLAG_FP)
+CREATE_MPI_DATATYPE(COMPLEX8, 42, float_float, DT_FLAG_COMPLEX)
+CREATE_MPI_DATATYPE(COMPLEX16, 43, double_double, DT_FLAG_COMPLEX)
+CREATE_MPI_DATATYPE(COMPLEX32, 44, double_double, DT_FLAG_COMPLEX)
+CREATE_MPI_DATATYPE(INTEGER1, 45, int, DT_FLAG_F_INTEGER)
+CREATE_MPI_DATATYPE(INTEGER2, 46, int16_t, DT_FLAG_F_INTEGER)
+CREATE_MPI_DATATYPE(INTEGER4, 47, int32_t, DT_FLAG_F_INTEGER)
+CREATE_MPI_DATATYPE(INTEGER8, 48, int64_t, DT_FLAG_F_INTEGER)
+CREATE_MPI_DATATYPE(INTEGER16, 49, integer128_t, DT_FLAG_F_INTEGER)
 
-CREATE_MPI_DATATYPE(LONG_DOUBLE_INT, 50, long_double_int)
-CREATE_MPI_DATATYPE(CXX_BOOL, 51, bool)
-CREATE_MPI_DATATYPE(CXX_FLOAT_COMPLEX, 52, std::complex<float>)
-CREATE_MPI_DATATYPE(CXX_DOUBLE_COMPLEX, 53, std::complex<double>)
-CREATE_MPI_DATATYPE(CXX_LONG_DOUBLE_COMPLEX, 54, std::complex<long double>)
+CREATE_MPI_DATATYPE(LONG_DOUBLE_INT, 50, long_double_int, DT_FLAG_REDUCTION)
+CREATE_MPI_DATATYPE(CXX_BOOL, 51, bool, DT_FLAG_LOGICAL)
+CREATE_MPI_DATATYPE(CXX_FLOAT_COMPLEX, 52, std::complex<float>, DT_FLAG_COMPLEX)
+CREATE_MPI_DATATYPE(CXX_DOUBLE_COMPLEX, 53, std::complex<double>, DT_FLAG_COMPLEX)
+CREATE_MPI_DATATYPE(CXX_LONG_DOUBLE_COMPLEX, 54, std::complex<long double>, DT_FLAG_COMPLEX)
 
 CREATE_MPI_DATATYPE_NULL(UB, 55)
 CREATE_MPI_DATATYPE_NULL(LB, 56)
-CREATE_MPI_DATATYPE(PACKED, 57, char)
+CREATE_MPI_DATATYPE(PACKED, 57, char, DT_FLAG_PREDEFINED)
 // Internal use only
-CREATE_MPI_DATATYPE(PTR, 58, void*)
-CREATE_MPI_DATATYPE(COUNT, 59, long long)
+CREATE_MPI_DATATYPE(PTR, 58, void*, DT_FLAG_PREDEFINED)
+CREATE_MPI_DATATYPE(COUNT, 59, long long, DT_FLAG_MULTILANG)
 MPI_Datatype MPI_PTR = &smpi_MPI_PTR;
 
 
@@ -136,9 +136,10 @@ Datatype::Datatype(const char* name, int ident, int size, MPI_Aint lb, MPI_Aint 
 }
 
 Datatype::Datatype(Datatype* datatype, int* ret)
-    : size_(datatype->size_), lb_(datatype->lb_), ub_(datatype->ub_), flags_(datatype->flags_)
+    : size_(datatype->size_), lb_(datatype->lb_), ub_(datatype->ub_), flags_(datatype->flags_), duplicated_datatype_(datatype)
 {
   this->add_f();
+  datatype->ref();
   *ret = this->copy_attrs(datatype);
 }
 
@@ -150,7 +151,9 @@ Datatype::~Datatype()
     return;
   //prevent further usage
   flags_ &= ~ DT_FLAG_COMMITED;
-  F2C::free_f(this->c2f());
+  if(duplicated_datatype_ != MPI_DATATYPE_NULL)
+    unref(duplicated_datatype_);
+  F2C::free_f(this->f2c_id());
   //if still used, mark for deletion
   if(refcount_!=0){
       flags_ |=DT_FLAG_DESTROYED;
@@ -161,38 +164,41 @@ Datatype::~Datatype()
 
 int Datatype::copy_attrs(Datatype* datatype){
   flags_ &= ~DT_FLAG_PREDEFINED;
-  int ret = MPI_SUCCESS;
-    
-  if (not datatype->attributes()->empty()) {
-    int flag=0;
-    void* value_out;
-    for (auto const& it : *(datatype->attributes())) {
-      smpi_key_elem elem = keyvals_.at(it.first);
-      if (elem != nullptr){
-        if( elem->copy_fn.type_copy_fn != MPI_NULL_COPY_FN && 
-            elem->copy_fn.type_copy_fn != MPI_TYPE_DUP_FN)
-          ret = elem->copy_fn.type_copy_fn(datatype, it.first, elem->extra_state, it.second, &value_out, &flag);
-        else if ( elem->copy_fn.type_copy_fn_fort != MPI_NULL_COPY_FN &&
-                  (*(int*)*elem->copy_fn.type_copy_fn_fort) != 1){
-          value_out=(int*)xbt_malloc(sizeof(int));
-          elem->copy_fn.type_copy_fn_fort(datatype, it.first, elem->extra_state, it.second, value_out, &flag, &ret);
-        }
-        if (ret != MPI_SUCCESS) {
-          break;
-        }
-        if(elem->copy_fn.type_copy_fn == MPI_TYPE_DUP_FN || 
-          ((elem->copy_fn.type_copy_fn_fort != MPI_NULL_COPY_FN) && (*(int*)*elem->copy_fn.type_copy_fn_fort == 1))){
-          elem->refcount++;
-          attributes()->insert({it.first, it.second});
-        } else if (flag){
-          elem->refcount++;
-          attributes()->insert({it.first, value_out});
-        }
+
+  set_contents(MPI_COMBINER_DUP, 0, nullptr, 0, nullptr, 1, &datatype);
+  for (auto const& it : datatype->attributes()) {
+    auto elem_it = keyvals_.find(it.first);
+    xbt_assert(elem_it != keyvals_.end(), "Keyval not found for Datatype: %d", it.first);
+
+    smpi_key_elem& elem = elem_it->second;
+    int ret             = MPI_SUCCESS;
+    int flag            = 0;
+    void* value_out     = nullptr;
+    if (elem.copy_fn.type_copy_fn == MPI_TYPE_DUP_FN) {
+      value_out = it.second;
+      flag      = 1;
+    } else if (elem.copy_fn.type_copy_fn != MPI_NULL_COPY_FN) {
+      ret = elem.copy_fn.type_copy_fn(datatype, it.first, elem.extra_state, it.second, &value_out, &flag);
+    }
+    if (elem.copy_fn.type_copy_fn_fort != MPI_NULL_COPY_FN) {
+      value_out = xbt_new(int, 1);
+      if (*(int*)*elem.copy_fn.type_copy_fn_fort == 1) { // MPI_TYPE_DUP_FN
+        memcpy(value_out, it.second, sizeof(int));
+        flag = 1;
+      } else { // not null, nor dup
+        elem.copy_fn.type_copy_fn_fort(datatype, it.first, elem.extra_state, it.second, value_out, &flag, &ret);
       }
+      if (ret != MPI_SUCCESS)
+        xbt_free(value_out);
+    }
+    if (ret != MPI_SUCCESS)
+      return ret;
+    if (flag) {
+      elem.refcount++;
+      attributes().emplace(it.first, value_out);
     }
   }
-  set_contents(MPI_COMBINER_DUP, 0, nullptr, 0, nullptr, 1, &datatype);
-  return ret;
+  return MPI_SUCCESS;
 }
 
 int Datatype::clone(MPI_Datatype* type){
@@ -309,7 +315,8 @@ int Datatype::get_contents(int max_integers, int max_addresses, int max_datatype
   if (static_cast<unsigned>(max_datatypes) < contents_->datatypes_.size())
     return MPI_ERR_COUNT;
   std::copy(begin(contents_->datatypes_), end(contents_->datatypes_), array_of_datatypes);
-  std::for_each(begin(contents_->datatypes_), end(contents_->datatypes_), std::mem_fn(&Datatype::ref));
+  for (auto& datatype : contents_->datatypes_)
+    datatype->ref();
   return MPI_SUCCESS;
 }
 
@@ -334,9 +341,8 @@ int Datatype::copy(const void* sendbuf, int sendcount, MPI_Datatype sendtype, vo
 {
   // FIXME Handle the case of a partial shared malloc.
 
-  if (smpi_cfg_privatization() == SmpiPrivStrategies::MMAP) {
-    smpi_switch_data_segment(simgrid::s4u::Actor::self());
-  }
+  smpi_switch_data_segment(simgrid::s4u::Actor::self());
+
   /* First check if we really have something to do */
   size_t offset = 0;
   std::vector<std::pair<size_t, size_t>> private_blocks;
@@ -365,12 +371,10 @@ int Datatype::copy(const void* sendbuf, int sendcount, MPI_Datatype sendtype, vo
       recvtype->unserialize(sendbuf, recvbuf, count / recvtype->size(), MPI_REPLACE);
     } else if (not(recvtype->flags() & DT_FLAG_DERIVED)) {
       sendtype->serialize(sendbuf, recvbuf, count / sendtype->size());
-    } else {
+    } else if(sendtype->size() != 0 && recvtype->size() != 0){
       void * buf_tmp = xbt_malloc(count);
-
       sendtype->serialize( sendbuf, buf_tmp,count/sendtype->size());
       recvtype->unserialize( buf_tmp, recvbuf,count/recvtype->size(), MPI_REPLACE);
-
       xbt_free(buf_tmp);
     }
   }
@@ -425,7 +429,7 @@ int Datatype::create_vector(int count, int block_length, int stride, MPI_Datatyp
   }else{
     /* in this situation the data are contiguous thus it's not required to serialize and unserialize it*/
     *new_type = new Datatype(count * block_length * old_type->size(), 0, ((count -1) * stride + block_length)*
-                         old_type->size(), DT_FLAG_CONTIGUOUS);
+                         old_type->size(), DT_FLAG_CONTIGUOUS|DT_FLAG_DERIVED);
     const std::array<int, 3> ints = {{count, block_length, stride}};
     (*new_type)->set_contents(MPI_COMBINER_VECTOR, 3, ints.data(), 0, nullptr, 1, &old_type);
     retval=MPI_SUCCESS;
@@ -451,7 +455,7 @@ int Datatype::create_hvector(int count, int block_length, MPI_Aint stride, MPI_D
     retval=MPI_SUCCESS;
   }else{
     /* in this situation the data are contiguous thus it's not required to serialize and unserialize it*/
-    *new_type = new Datatype(count * block_length * old_type->size(), 0, count * block_length * old_type->size(), DT_FLAG_CONTIGUOUS);
+    *new_type = new Datatype(count * block_length * old_type->size(), 0, count * block_length * old_type->size(), DT_FLAG_CONTIGUOUS|DT_FLAG_DERIVED);
     const std::array<int, 2> ints = {{count, block_length}};
     (*new_type)->set_contents(MPI_COMBINER_HVECTOR, 2, ints.data(), 1, &stride, 1, &old_type);
     retval=MPI_SUCCESS;

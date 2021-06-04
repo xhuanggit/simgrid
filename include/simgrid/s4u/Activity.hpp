@@ -32,11 +32,22 @@ class XBT_PUBLIC Activity {
   friend Exec;
   friend Io;
 
+public:
+  // enum class State { ... }
+  XBT_DECLARE_ENUM_CLASS(State, INITED, STARTING, STARTED, CANCELED, FINISHED);
+
 protected:
   Activity()  = default;
   virtual ~Activity() = default;
 
   virtual bool is_assigned() const = 0;
+
+  virtual void complete(Activity::State state)
+  {
+    state_ = state;
+    if (state == State::FINISHED)
+      release_dependencies();
+  }
 
   void release_dependencies()
   {
@@ -91,25 +102,22 @@ public:
   Activity& operator=(Activity const&) = delete;
 #endif
 
-  // enum class State { ... }
-  XBT_DECLARE_ENUM_CLASS(State, INITED, STARTING, STARTED, CANCELED, FINISHED);
-
   /** Starts a previously created activity.
    *
    * This function is optional: you can call wait() even if you didn't call start()
    */
   virtual Activity* start() = 0;
   /** Blocks the current actor until the activity is terminated */
-  virtual Activity* wait() = 0;
+  Activity* wait() { return wait_for(-1.0); }
   /** Blocks the current actor until the activity is terminated, or until the timeout is elapsed\n
    *  Raises: timeout exception.*/
-  virtual Activity* wait_for(double timeout) = 0;
+  Activity* wait_for(double timeout);
   /** Blocks the current actor until the activity is terminated, or until the time limit is reached\n
    * Raises: timeout exception. */
   void wait_until(double time_limit);
 
   /** Cancel that activity */
-  virtual Activity* cancel() = 0;
+  Activity* cancel();
   /** Retrieve the current state of the activity */
   Activity::State get_state() const { return state_; }
   /** Return a string representation of the activity's state (one of INITED, STARTING, STARTED, CANCELED, FINISHED) */
@@ -211,6 +219,11 @@ public:
     Activity::vetoable_start();
     return static_cast<AnyActivity*>(this);
   }
+
+  AnyActivity* cancel() { return static_cast<AnyActivity*>(Activity::cancel()); }
+  AnyActivity* wait() { return wait_for(-1.0); }
+  virtual AnyActivity* wait_for(double timeout) { return static_cast<AnyActivity*>(Activity::wait_for(timeout)); }
+
 #ifndef DOXYGEN
   /* The refcounting is done in the ancestor class, Activity, but we want each of the classes benefiting of the CRTP
    * (Exec, Comm, etc) to have smart pointers too, so we define these methods here, that forward the ptr_release and

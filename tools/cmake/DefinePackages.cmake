@@ -331,10 +331,13 @@ set(SURF_SRC
   src/kernel/routing/FullZone.cpp
   src/kernel/routing/NetPoint.cpp
   src/kernel/routing/NetZoneImpl.cpp
-  src/kernel/routing/TorusZone.cpp
   src/kernel/routing/RoutedZone.cpp
+  src/kernel/routing/StarZone.cpp
+  src/kernel/routing/TorusZone.cpp
   src/kernel/routing/VivaldiZone.cpp
   src/kernel/routing/WifiZone.cpp
+
+  src/kernel/timer/Timer.cpp
 
   src/kernel/EngineImpl.cpp
   src/kernel/EngineImpl.hpp
@@ -360,6 +363,7 @@ set(SURF_SRC
   )
 
 set(PLUGINS_SRC
+  src/plugins/ProducerConsumer.cpp
   src/plugins/dirty_page_tracking.cpp
   src/plugins/host_dvfs.cpp
   src/plugins/host_energy.cpp
@@ -677,6 +681,7 @@ set(headers_to_install
   include/simgrid/plugins/file_system.h
   include/simgrid/plugins/live_migration.h
   include/simgrid/plugins/load.h
+  include/simgrid/plugins/ProducerConsumer.hpp
   include/simgrid/smpi/smpi_replay.hpp
   include/simgrid/instr.h
   include/simgrid/mailbox.h
@@ -685,6 +690,7 @@ set(headers_to_install
   include/simgrid/forward.h
   include/simgrid/simix.h
   include/simgrid/simix.hpp
+  include/simgrid/kernel/Timer.hpp
   include/simgrid/kernel/future.hpp
   include/simgrid/disk.h
   include/simgrid/host.h
@@ -713,6 +719,7 @@ set(headers_to_install
   include/simgrid/s4u.hpp
 
   include/simgrid/kernel/resource/Action.hpp
+  include/simgrid/kernel/resource/NetworkModelIntf.hpp
   include/simgrid/kernel/resource/Model.hpp
   include/simgrid/kernel/resource/Resource.hpp
 
@@ -726,6 +733,7 @@ set(headers_to_install
   include/simgrid/kernel/routing/NetPoint.hpp
   include/simgrid/kernel/routing/NetZoneImpl.hpp
   include/simgrid/kernel/routing/RoutedZone.hpp
+  include/simgrid/kernel/routing/StarZone.hpp
   include/simgrid/kernel/routing/TorusZone.hpp
   include/simgrid/kernel/routing/VivaldiZone.hpp
   include/simgrid/kernel/routing/WifiZone.hpp
@@ -770,7 +778,6 @@ set(headers_to_install
   include/xbt/signal.hpp
   include/xbt/str.h
   include/xbt/string.hpp
-  include/xbt/synchro.h
   include/xbt/sysdep.h
   include/xbt/system_error.hpp
   include/xbt/utility.hpp
@@ -867,6 +874,7 @@ set(DOC_SOURCES
   docs/manpages/tesh.pod
 
   docs/Build.sh
+  docs/README.md
   docs/bin/extract_logs_hierarchy.pl
   docs/requirements.txt
   docs/source/conf.py
@@ -912,6 +920,7 @@ set(DOC_SOURCES
   docs/source/Deploying_your_application.rst
   docs/source/Experimental_setup.rst
   docs/source/index.rst
+  docs/source/intl.rst
   docs/source/Introduction.rst
   docs/source/Installing_SimGrid.rst
   docs/source/Start_your_own_project.rst
@@ -948,6 +957,8 @@ set(DOC_SOURCES
   docs/source/tuto_smpi/img/lu.S.4.png
   docs/source/tuto_smpi/gemm_mpi.cpp
   docs/source/tuto_smpi/roundtrip.c
+
+  docs/source/Tutorial_Model-checking.rst
 
   CITATION.bib
   )

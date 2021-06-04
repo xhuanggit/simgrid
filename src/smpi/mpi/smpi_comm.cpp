@@ -12,7 +12,7 @@
 #include "src/smpi/include/smpi_actor.hpp"
 #include "src/surf/HostImpl.hpp"
 
-#include <climits>
+#include <limits>
 
 XBT_LOG_NEW_DEFAULT_SUBCATEGORY(smpi_comm, smpi, "Logging specific to SMPI (comm)");
 
@@ -65,54 +65,62 @@ void Comm::destroy(Comm* comm)
     Comm::destroy(smpi_process()->comm_world());
     return;
   }
+  if(comm != MPI_COMM_WORLD)
+    comm->mark_as_deleted();
   Comm::unref(comm);
 }
 
 int Comm::dup(MPI_Comm* newcomm){
-  if (smpi_cfg_privatization() == SmpiPrivStrategies::MMAP) {
-    // we need to switch as the called function may silently touch global variables
-    smpi_switch_data_segment(s4u::Actor::self());
-  }
+  // we need to switch as the called function may silently touch global variables
+  smpi_switch_data_segment(s4u::Actor::self());
+
   auto* cp     = new Group(this->group());
   (*newcomm)   = new  Comm(cp, this->topo());
-  int ret      = MPI_SUCCESS;
 
-  if (not attributes()->empty()) {
-    int flag=0;
-    void* value_out=nullptr;
-    for (auto const& it : *attributes()) {
-      smpi_key_elem elem = keyvals_.at(it.first);
-      if (elem != nullptr){
-        if( elem->copy_fn.comm_copy_fn != MPI_NULL_COPY_FN && 
-            elem->copy_fn.comm_copy_fn != MPI_COMM_DUP_FN)
-          ret = elem->copy_fn.comm_copy_fn(this, it.first, elem->extra_state, it.second, &value_out, &flag);
-        else if ( elem->copy_fn.comm_copy_fn_fort != MPI_NULL_COPY_FN &&
-                  *(int*)*elem->copy_fn.comm_copy_fn_fort != 1){
-          value_out=(int*)xbt_malloc(sizeof(int));
-          elem->copy_fn.comm_copy_fn_fort(this, it.first, elem->extra_state, it.second, value_out, &flag,&ret);
-        }
-        if (ret != MPI_SUCCESS) {
-          Comm::destroy(*newcomm);
-          *newcomm = MPI_COMM_NULL;
-          return ret;
-        }
-        if (elem->copy_fn.comm_copy_fn == MPI_COMM_DUP_FN || 
-           ((elem->copy_fn.comm_copy_fn_fort != MPI_NULL_COPY_FN) && *(int*)*elem->copy_fn.comm_copy_fn_fort == 1)){
-          elem->refcount++;
-          (*newcomm)->attributes()->insert({it.first, it.second});
-        }else if (flag){
-          elem->refcount++;
-          (*newcomm)->attributes()->insert({it.first, value_out});
-        }
+  for (auto const& it : attributes()) {
+    auto elem_it = keyvals_.find(it.first);
+    xbt_assert(elem_it != keyvals_.end(), "Keyval not found for Comm: %d", it.first);
+
+    smpi_key_elem& elem = elem_it->second;
+    int ret             = MPI_SUCCESS;
+    int flag            = 0;
+    void* value_out     = nullptr;
+    if (elem.copy_fn.comm_copy_fn == MPI_COMM_DUP_FN) {
+      value_out = it.second;
+      flag      = 1;
+    } else if (elem.copy_fn.comm_copy_fn != MPI_NULL_COPY_FN) {
+      ret = elem.copy_fn.comm_copy_fn(this, it.first, elem.extra_state, it.second, &value_out, &flag);
+    }
+    if (elem.copy_fn.comm_copy_fn_fort != MPI_NULL_COPY_FN) {
+      value_out = xbt_new(int, 1);
+      if (*(int*)*elem.copy_fn.comm_copy_fn_fort == 1) { // MPI_COMM_DUP_FN
+        memcpy(value_out, it.second, sizeof(int));
+        flag = 1;
+      } else { // not null, nor dup
+        elem.copy_fn.comm_copy_fn_fort(this, it.first, elem.extra_state, it.second, value_out, &flag, &ret);
       }
+      if (ret != MPI_SUCCESS)
+        xbt_free(value_out);
+    }
+    if (ret != MPI_SUCCESS) {
+      Comm::destroy(*newcomm);
+      *newcomm = MPI_COMM_NULL;
+      return ret;
+    }
+    if (flag) {
+      elem.refcount++;
+      (*newcomm)->attributes().emplace(it.first, value_out);
     }
   }
   //duplicate info if present
   if(info_!=MPI_INFO_NULL)
     (*newcomm)->info_ = new simgrid::smpi::Info(info_);
   //duplicate errhandler
-  (*newcomm)->set_errhandler(errhandler_);
-  return ret;
+  if (errhandlers_ != nullptr)//MPI_COMM_WORLD, only grab our own
+    (*newcomm)->set_errhandler(errhandlers_[this->rank()]);
+  else
+    (*newcomm)->set_errhandler(errhandler_);
+  return MPI_SUCCESS;
 }
 
 int Comm::dup_with_info(MPI_Info info, MPI_Comm* newcomm){
@@ -148,7 +156,7 @@ int Comm::rank() const
 {
   if (this == MPI_COMM_UNINITIALIZED)
     return smpi_process()->comm_world()->rank();
-  return group_->rank(s4u::Actor::self());
+  return group_->rank(s4u::this_actor::get_pid());
 }
 
 int Comm::id() const
@@ -165,13 +173,22 @@ void Comm::get_name(char* name, int* len) const
   if(this == MPI_COMM_WORLD && name_.empty()) {
     strncpy(name, "MPI_COMM_WORLD", 15);
     *len = 14;
-  } else if(this == MPI_COMM_SELF && name_.empty()) {
-    strncpy(name, "MPI_COMM_SELF", 14);
-    *len = 13;
   } else {
     *len = snprintf(name, MPI_MAX_NAME_STRING+1, "%s", name_.c_str());
   }
 }
+
+std::string Comm::name() const
+{
+  int size;
+  char name[MPI_MAX_NAME_STRING+1];
+  this->get_name(name, &size);
+  if (name[0]=='\0')
+    return std::string("MPI_Comm");
+  else
+    return std::string(name);
+}
+
 
 void Comm::set_name (const char* name)
 {
@@ -248,7 +265,7 @@ MPI_Comm Comm::split(int color, int key)
 
   MPI_Group group_root = nullptr;
   MPI_Group group_out  = nullptr;
-  MPI_Group group      = this->group();
+  const Group* group   = this->group();
   int myrank           = this->rank();
   int size             = this->size();
   /* Gather all colors and keys on rank 0 */
@@ -280,7 +297,7 @@ MPI_Comm Comm::split(int color, int key)
           group_root = group_out; /* Save root's group */
         }
         for (unsigned j = 0; j < rankmap.size(); j++) {
-          s4u::Actor* actor = group->actor(rankmap[j].second);
+          aid_t actor = group->actor(rankmap[j].second);
           group_out->set_mapping(actor, j);
         }
         std::vector<MPI_Request> requests(rankmap.size());
@@ -334,7 +351,7 @@ void Comm::unref(Comm* comm){
 
   if(comm->refcount_==0){
     if(simgrid::smpi::F2C::lookup() != nullptr)
-      F2C::free_f(comm->c2f());
+      F2C::free_f(comm->f2c_id());
     comm->cleanup_smp();
     comm->cleanup_attr<Comm>();
     if (comm->info_ != MPI_INFO_NULL)
@@ -355,10 +372,10 @@ void Comm::unref(Comm* comm){
 MPI_Comm Comm::find_intra_comm(int * leader){
   //get the indices of all processes sharing the same simix host
   int intra_comm_size     = 0;
-  int min_index           = INT_MAX; // the minimum index will be the leader
-  sg_host_self()->pimpl_->foreach_actor([this, &intra_comm_size, &min_index](auto& actor) {
-    int index = actor.get_pid();
-    if (this->group()->rank(actor.get_ciface()) != MPI_UNDEFINED) { // Is this process in the current group?
+  aid_t min_index         = std::numeric_limits<aid_t>::max(); // the minimum index will be the leader
+  sg_host_self()->get_impl()->foreach_actor([this, &intra_comm_size, &min_index](auto& actor) {
+    aid_t index = actor.get_pid();
+    if (this->group()->rank(index) != MPI_UNDEFINED) { // Is this process in the current group?
       intra_comm_size++;
       if (index < min_index)
         min_index = index;
@@ -367,9 +384,9 @@ MPI_Comm Comm::find_intra_comm(int * leader){
   XBT_DEBUG("number of processes deployed on my node : %d", intra_comm_size);
   auto* group_intra = new Group(intra_comm_size);
   int i = 0;
-  sg_host_self()->pimpl_->foreach_actor([this, group_intra, &i](auto& actor) {
-    if (this->group()->rank(actor.get_ciface()) != MPI_UNDEFINED) {
-      group_intra->set_mapping(actor.get_ciface(), i);
+  sg_host_self()->get_impl()->foreach_actor([this, group_intra, &i](auto& actor) {
+    if (this->group()->rank(actor.get_pid()) != MPI_UNDEFINED) {
+      group_intra->set_mapping(actor.get_pid(), i);
       i++;
     }
   });
@@ -393,10 +410,9 @@ void Comm::init_smp(){
     smpi_process()->set_replaying(false);
   }
 
-  if (smpi_cfg_privatization() == SmpiPrivStrategies::MMAP) {
-    // we need to switch as the called function may silently touch global variables
-    smpi_switch_data_segment(s4u::Actor::self());
-  }
+  // we need to switch as the called function may silently touch global variables
+  smpi_switch_data_segment(s4u::Actor::self());
+
   // identify neighbors in comm
   MPI_Comm comm_intra = find_intra_comm(&leader);
 
@@ -406,11 +422,6 @@ void Comm::init_smp(){
   std::fill_n(leader_list, comm_size, -1);
 
   allgather__ring(&leader, 1, MPI_INT , leaders_map, 1, MPI_INT, this);
-
-  if (smpi_cfg_privatization() == SmpiPrivStrategies::MMAP) {
-    // we need to switch as the called function may silently touch global variables
-    smpi_switch_data_segment(s4u::Actor::self());
-  }
 
   if(leaders_map_==nullptr){
     leaders_map_= leaders_map;
@@ -439,7 +450,7 @@ void Comm::init_smp(){
   if(MPI_COMM_WORLD!=MPI_COMM_UNINITIALIZED && this!=MPI_COMM_WORLD){
     //create leader_communicator
     for (i=0; i< leader_group_size;i++)
-      leaders_group->set_mapping(s4u::Actor::by_pid(leader_list[i]).get(), i);
+      leaders_group->set_mapping(leader_list[i], i);
     leader_comm = new Comm(leaders_group, nullptr, true);
     this->set_leaders_comm(leader_comm);
     this->set_intra_comm(comm_intra);
@@ -447,7 +458,7 @@ void Comm::init_smp(){
     // create intracommunicator
   }else{
     for (i=0; i< leader_group_size;i++)
-      leaders_group->set_mapping(s4u::Actor::by_pid(leader_list[i]).get(), i);
+      leaders_group->set_mapping(leader_list[i], i);
 
     if(this->get_leaders_comm()==MPI_COMM_NULL){
       leader_comm = new Comm(leaders_group, nullptr, true);
@@ -481,13 +492,12 @@ void Comm::init_smp(){
   }
   bcast__scatter_LR_allgather(&is_uniform_, 1, MPI_INT, 0, comm_intra);
 
-  if (smpi_cfg_privatization() == SmpiPrivStrategies::MMAP) {
-    // we need to switch as the called function may silently touch global variables
-    smpi_switch_data_segment(s4u::Actor::self());
-  }
+  // we need to switch as the called function may silently touch global variables
+  smpi_switch_data_segment(s4u::Actor::self());
+
   // Are the ranks blocked ? = allocated contiguously on the SMP nodes
   int is_blocked=1;
-  int prev=this->group()->rank(comm_intra->group()->actor(0));
+  int prev      = this->group()->rank(comm_intra->group()->actor(0));
   for (i = 1; i < my_local_size; i++) {
     int that = this->group()->rank(comm_intra->group()->actor(i));
     if (that != prev + 1) {
@@ -541,10 +551,11 @@ void Comm::remove_rma_win(MPI_Win win){
 
 void Comm::finish_rma_calls() const
 {
+  const int myrank = rank();
   for (auto const& it : rma_wins_) {
-    if(it->rank()==this->rank()){//is it ours (for MPI_COMM_WORLD)?
+    if (it->rank() == myrank) { // is it ours (for MPI_COMM_WORLD)?
       int finished = it->finish_comms();
-      XBT_DEBUG("Barrier for rank %d - Finished %d RMA calls",this->rank(), finished);
+      XBT_DEBUG("Barrier for rank %d - Finished %d RMA calls", myrank, finished);
     }
   }
 }

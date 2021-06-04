@@ -15,7 +15,7 @@ namespace routing {
 /** @ingroup ROUTING_API
  *  @brief NetZone with an explicit routing (abstract class)
  *
- * This abstract class factorizes code between its subclasses: Full, Dijkstra and Floyd.
+ * This abstract class factors code between its subclasses: Full, Dijkstra and Floyd.
  *
  * <table>
  * <caption>Comparison of the RoutedZone subclasses</caption>
@@ -56,15 +56,15 @@ public:
                  std::map<std::string, xbt_edge_t, std::less<>>* edges) override;
 
 protected:
-  RouteCreationArgs* new_extended_route(RoutingMode hierarchy, NetPoint* gw_src, NetPoint* gw_dst,
-                                        const std::vector<resource::LinkImpl*>& link_list, bool preserve_order);
-  XBT_ATTRIB_DEPRECATED_v330("Please drop 2nd, 3rd and 7th parameters") virtual RouteCreationArgs* new_extended_route(
+  Route* new_extended_route(RoutingMode hierarchy, NetPoint* gw_src, NetPoint* gw_dst,
+                            const std::vector<resource::LinkImpl*>& link_list, bool preserve_order);
+  XBT_ATTRIB_DEPRECATED_v330("Please drop 2nd, 3rd and 7th parameters") virtual Route* new_extended_route(
       RoutingMode hierarchy, NetPoint* /* src */, NetPoint* /* dst */, NetPoint* gw_src, NetPoint* gw_dst,
       std::vector<resource::LinkImpl*>& link_list, bool /* symmetrical */, bool preserve_order)
   {
     return new_extended_route(hierarchy, gw_src, gw_dst, link_list, preserve_order);
   }
-  void get_route_check_params(NetPoint* src, NetPoint* dst) const;
+  void get_route_check_params(const NetPoint* src, const NetPoint* dst) const;
   void add_route_check_params(NetPoint* src, NetPoint* dst, NetPoint* gw_src, NetPoint* gw_dst,
                               const std::vector<resource::LinkImpl*>& link_list, bool symmetrical) const;
 };

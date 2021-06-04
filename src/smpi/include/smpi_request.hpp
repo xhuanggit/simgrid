@@ -30,16 +30,17 @@ class Request : public F2C {
   void* old_buf_;
   /* this is especially for derived datatypes that we need to serialize/unserialize.
    * It let us know how to unserialize at the end of the communication */
-  MPI_Datatype old_type_;
+  MPI_Datatype type_;
   size_t size_;
-  int src_;
-  int dst_;
+  aid_t src_;
+  aid_t dst_;
   int tag_;
   // to handle cases where we have an unknown sender
   // We can't override src, tag, and size, because the request may be reused later
-  int real_src_;
+  aid_t real_src_;
   int real_tag_;
   bool truncated_;
+  bool unmatched_types_;
   size_t real_size_;
   MPI_Comm comm_;
   simgrid::kernel::activity::ActivityImplPtr action_;
@@ -49,30 +50,32 @@ class Request : public F2C {
   int refcount_;
   MPI_Op op_;
   std::unique_ptr<smpi_mpi_generalized_request_funcs_t> generalized_funcs;
-  MPI_Request* nbc_requests_;
-  int nbc_requests_size_;
+  std::vector<MPI_Request> nbc_requests_;
   static bool match_common(MPI_Request req, MPI_Request sender, MPI_Request receiver);
+  static bool match_types(MPI_Datatype stype, MPI_Datatype rtype);
 
 public:
   Request() = default;
-  Request(const void* buf, int count, MPI_Datatype datatype, int src, int dst, int tag, MPI_Comm comm, unsigned flags, MPI_Op op = MPI_REPLACE);
+  Request(const void* buf, int count, MPI_Datatype datatype, aid_t src, aid_t dst, int tag, MPI_Comm comm,
+          unsigned flags, MPI_Op op = MPI_REPLACE);
   MPI_Comm comm() const { return comm_; }
   size_t size() const { return size_; }
   size_t real_size() const { return real_size_; }
-  int src() const { return src_; }
-  int dst() const { return dst_; }
+  aid_t src() const { return src_; }
+  aid_t dst() const { return dst_; }
   int tag() const { return tag_; }
   int flags() const { return flags_; }
   bool detached() const { return detached_; }
-  MPI_Datatype type() const { return old_type_; }
+  std::string name() const override { return std::string("MPI_Request"); }
+  MPI_Datatype type() const { return type_; }
   void print_request(const char* message) const;
   void start();
   void cancel();
   void init_buffer(int count);
   void ref();
-  void set_nbc_requests(MPI_Request* reqs, int size);
-  int get_nbc_requests_size() const;
-  MPI_Request* get_nbc_requests() const;
+  void start_nbc_requests(std::vector<MPI_Request> reqs);
+  static int finish_nbc_requests(MPI_Request* req, int test);
+  std::vector<MPI_Request> get_nbc_requests() const;
   static void finish_wait(MPI_Request* request, MPI_Status* status);
   static void unref(MPI_Request* request);
   static int wait(MPI_Request* req, MPI_Status* status);
@@ -91,7 +94,7 @@ public:
   static MPI_Request issend(const void* buf, int count, MPI_Datatype datatype, int dst, int tag, MPI_Comm comm);
   static MPI_Request irecv(void* buf, int count, MPI_Datatype datatype, int src, int tag, MPI_Comm comm);
 
-  static void recv(void* buf, int count, MPI_Datatype datatype, int src, int tag, MPI_Comm comm, MPI_Status* status);
+  static int recv(void* buf, int count, MPI_Datatype datatype, int src, int tag, MPI_Comm comm, MPI_Status* status);
   static void bsend(const void* buf, int count, MPI_Datatype datatype, int dst, int tag, MPI_Comm comm);
   static void send(const void* buf, int count, MPI_Datatype datatype, int dst, int tag, MPI_Comm comm);
   static void ssend(const void* buf, int count, MPI_Datatype datatype, int dst, int tag, MPI_Comm comm);

@@ -6,112 +6,104 @@
 #include "simgrid/kernel/routing/FloydZone.hpp"
 #include "simgrid/kernel/routing/NetPoint.hpp"
 #include "src/surf/network_interface.hpp"
-#include "src/surf/xml/platf_private.hpp"
 #include "surf/surf.hpp"
 #include "xbt/string.hpp"
 
-#include <cfloat>
-#include <limits>
+#include <climits>
 
 XBT_LOG_NEW_DEFAULT_SUBCATEGORY(surf_route_floyd, surf, "Routing part of surf");
-
-#define TO_FLOYD_COST(i, j) (cost_table_)[(i) + (j)*table_size]
-#define TO_FLOYD_PRED(i, j) (predecessor_table_)[(i) + (j)*table_size]
-#define TO_FLOYD_LINK(i, j) (link_table_)[(i) + (j)*table_size]
 
 namespace simgrid {
 namespace kernel {
 namespace routing {
 
-FloydZone::~FloydZone()
-{
-  /* Delete link_table */
-  for (auto const* link : link_table_)
-    delete link;
-}
-
 void FloydZone::init_tables(unsigned int table_size)
 {
-  if (link_table_.empty()) {
-    /* Create and initialize Cost, Predecessor and Link tables */
-    cost_table_.resize(table_size * table_size, DBL_MAX);   /* link cost from host to host */
-    predecessor_table_.resize(table_size * table_size, -1); /* predecessor host numbers */
-    link_table_.resize(table_size * table_size, nullptr);   /* actual link between src and dst */
+  if (link_table_.size() != table_size) {
+    /* Resize and initialize Cost, Predecessor and Link tables */
+    cost_table_.resize(table_size);
+    link_table_.resize(table_size);
+    predecessor_table_.resize(table_size);
+    for (auto& cost : cost_table_)
+      cost.resize(table_size, ULONG_MAX); /* link cost from host to host */
+    for (auto& link : link_table_)
+      link.resize(table_size); /* actual link between src and dst */
+    for (auto& predecessor : predecessor_table_)
+      predecessor.resize(table_size, -1); /* predecessor host numbers */
   }
 }
 
-void FloydZone::get_local_route(NetPoint* src, NetPoint* dst, RouteCreationArgs* route, double* lat)
+void FloydZone::get_local_route(const NetPoint* src, const NetPoint* dst, Route* route, double* lat)
 {
-  unsigned int table_size = get_table_size();
-
   get_route_check_params(src, dst);
 
   /* create a result route */
-  std::vector<RouteCreationArgs*> route_stack;
+  std::vector<Route*> route_stack;
   unsigned int cur = dst->id();
   do {
-    int pred = TO_FLOYD_PRED(src->id(), cur);
+    int pred = predecessor_table_[src->id()][cur];
     if (pred == -1)
       throw std::invalid_argument(xbt::string_printf("No route from '%s' to '%s'", src->get_cname(), dst->get_cname()));
-    route_stack.push_back(TO_FLOYD_LINK(pred, cur));
+    route_stack.push_back(link_table_[pred][cur].get());
     cur = pred;
   } while (cur != src->id());
 
-  if (hierarchy_ == RoutingMode::recursive) {
-    route->gw_src = route_stack.back()->gw_src;
-    route->gw_dst = route_stack.front()->gw_dst;
+  if (get_hierarchy() == RoutingMode::recursive) {
+    route->gw_src_ = route_stack.back()->gw_src_;
+    route->gw_dst_ = route_stack.front()->gw_dst_;
   }
 
-  NetPoint* prev_dst_gw = nullptr;
+  const NetPoint* prev_dst_gw = nullptr;
   while (not route_stack.empty()) {
-    const RouteCreationArgs* e_route = route_stack.back();
+    const Route* e_route = route_stack.back();
     route_stack.pop_back();
-    if (hierarchy_ == RoutingMode::recursive && prev_dst_gw != nullptr &&
-        prev_dst_gw->get_cname() != e_route->gw_src->get_cname()) {
-      get_global_route(prev_dst_gw, e_route->gw_src, route->link_list, lat);
+    if (get_hierarchy() == RoutingMode::recursive && prev_dst_gw != nullptr &&
+        prev_dst_gw->get_cname() != e_route->gw_src_->get_cname()) {
+      get_global_route(prev_dst_gw, e_route->gw_src_, route->link_list_, lat);
     }
 
-    for (auto const& link : e_route->link_list) {
-      route->link_list.push_back(link);
+    for (auto const& link : e_route->link_list_) {
+      route->link_list_.push_back(link);
       if (lat)
         *lat += link->get_latency();
     }
 
-    prev_dst_gw = e_route->gw_dst;
+    prev_dst_gw = e_route->gw_dst_;
   }
 }
 
 void FloydZone::add_route(NetPoint* src, NetPoint* dst, NetPoint* gw_src, NetPoint* gw_dst,
-                          std::vector<resource::LinkImpl*>& link_list, bool symmetrical)
+                          const std::vector<resource::LinkImpl*>& link_list_, bool symmetrical)
 {
   /* set the size of table routing */
   unsigned int table_size = get_table_size();
   init_tables(table_size);
 
-  add_route_check_params(src, dst, gw_src, gw_dst, link_list, symmetrical);
+  add_route_check_params(src, dst, gw_src, gw_dst, link_list_, symmetrical);
 
   /* Check that the route does not already exist */
   if (gw_dst && gw_src) // netzone route (to adapt the error message, if any)
-    xbt_assert(nullptr == TO_FLOYD_LINK(src->id(), dst->id()),
+    xbt_assert(nullptr == link_table_[src->id()][dst->id()],
                "The route between %s@%s and %s@%s already exists (Rq: routes are symmetrical by default).",
                src->get_cname(), gw_src->get_cname(), dst->get_cname(), gw_dst->get_cname());
   else
-    xbt_assert(nullptr == TO_FLOYD_LINK(src->id(), dst->id()),
+    xbt_assert(nullptr == link_table_[src->id()][dst->id()],
                "The route between %s and %s already exists (Rq: routes are symmetrical by default).", src->get_cname(),
                dst->get_cname());
 
-  TO_FLOYD_LINK(src->id(), dst->id()) = new_extended_route(hierarchy_, gw_src, gw_dst, link_list, true);
-  TO_FLOYD_PRED(src->id(), dst->id()) = src->id();
-  TO_FLOYD_COST(src->id(), dst->id()) = (TO_FLOYD_LINK(src->id(), dst->id()))->link_list.size();
+  link_table_[src->id()][dst->id()] =
+      std::unique_ptr<Route>(new_extended_route(get_hierarchy(), gw_src, gw_dst, link_list_, true));
+  predecessor_table_[src->id()][dst->id()] = src->id();
+  cost_table_[src->id()][dst->id()]        = link_table_[src->id()][dst->id()]->link_list_.size();
 
   if (symmetrical) {
     if (gw_dst && gw_src) // netzone route (to adapt the error message, if any)
       xbt_assert(
-          nullptr == TO_FLOYD_LINK(dst->id(), src->id()),
+          nullptr == link_table_[dst->id()][src->id()],
           "The route between %s@%s and %s@%s already exists. You should not declare the reverse path as symmetrical.",
           dst->get_cname(), gw_dst->get_cname(), src->get_cname(), gw_src->get_cname());
     else
-      xbt_assert(nullptr == TO_FLOYD_LINK(dst->id(), src->id()),
+      xbt_assert(nullptr == link_table_[dst->id()][src->id()],
                  "The route between %s and %s already exists. You should not declare the reverse path as symmetrical.",
                  dst->get_cname(), src->get_cname());
 
@@ -127,10 +119,11 @@ void FloydZone::add_route(NetPoint* src, NetPoint* dst, NetPoint* gw_src, NetPoi
       XBT_DEBUG("Load NetzoneRoute from \"%s(%s)\" to \"%s(%s)\"", dst->get_cname(), gw_src->get_cname(),
                 src->get_cname(), gw_dst->get_cname());
 
-    TO_FLOYD_LINK(dst->id(), src->id()) = new_extended_route(hierarchy_, gw_src, gw_dst, link_list, false);
-    TO_FLOYD_PRED(dst->id(), src->id()) = dst->id();
-    TO_FLOYD_COST(dst->id(), src->id()) =
-        (TO_FLOYD_LINK(dst->id(), src->id()))->link_list.size(); /* count of links, old model assume 1 */
+    link_table_[dst->id()][src->id()] =
+        std::unique_ptr<Route>(new_extended_route(get_hierarchy(), gw_src, gw_dst, link_list_, false));
+    predecessor_table_[dst->id()][src->id()] = dst->id();
+    cost_table_[dst->id()][src->id()] =
+        link_table_[dst->id()][src->id()]->link_list_.size(); /* count of links, old model assume 1 */
   }
 }
 
@@ -141,15 +134,14 @@ void FloydZone::do_seal()
   init_tables(table_size);
 
   /* Add the loopback if needed */
-  if (get_network_model()->loopback_ && hierarchy_ == RoutingMode::base) {
+  if (get_network_model()->loopback_ && get_hierarchy() == RoutingMode::base) {
     for (unsigned int i = 0; i < table_size; i++) {
-      RouteCreationArgs* route = TO_FLOYD_LINK(i, i);
+      auto& route = link_table_[i][i];
       if (not route) {
-        route = new RouteCreationArgs();
-        route->link_list.push_back(get_network_model()->loopback_);
-        TO_FLOYD_LINK(i, i) = route;
-        TO_FLOYD_PRED(i, i) = i;
-        TO_FLOYD_COST(i, i) = 1;
+        route.reset(new Route());
+        route->link_list_.push_back(get_network_model()->loopback_);
+        predecessor_table_[i][i] = i;
+        cost_table_[i][i]        = 1;
       }
     }
   }
@@ -157,11 +149,10 @@ void FloydZone::do_seal()
   for (unsigned int c = 0; c < table_size; c++) {
     for (unsigned int a = 0; a < table_size; a++) {
       for (unsigned int b = 0; b < table_size; b++) {
-        if (TO_FLOYD_COST(a, c) < DBL_MAX && TO_FLOYD_COST(c, b) < DBL_MAX &&
-            (fabs(TO_FLOYD_COST(a, b) - DBL_MAX) < std::numeric_limits<double>::epsilon() ||
-             (TO_FLOYD_COST(a, c) + TO_FLOYD_COST(c, b) < TO_FLOYD_COST(a, b)))) {
-          TO_FLOYD_COST(a, b) = TO_FLOYD_COST(a, c) + TO_FLOYD_COST(c, b);
-          TO_FLOYD_PRED(a, b) = TO_FLOYD_PRED(c, b);
+        if (cost_table_[a][c] < ULONG_MAX && cost_table_[c][b] < ULONG_MAX &&
+            (cost_table_[a][b] == ULONG_MAX || (cost_table_[a][c] + cost_table_[c][b] < cost_table_[a][b]))) {
+          cost_table_[a][b]        = cost_table_[a][c] + cost_table_[c][b];
+          predecessor_table_[a][b] = predecessor_table_[c][b];
         }
       }
     }
@@ -169,4 +160,12 @@ void FloydZone::do_seal()
 }
 } // namespace routing
 } // namespace kernel
+
+namespace s4u {
+NetZone* create_floyd_zone(const std::string& name)
+{
+  return (new kernel::routing::FloydZone(name))->get_iface();
+}
+} // namespace s4u
+
 } // namespace simgrid

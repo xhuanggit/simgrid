@@ -7,6 +7,7 @@
 #define SURF_NETWORK_INTERFACE_HPP_
 
 #include "simgrid/kernel/resource/Model.hpp"
+#include "simgrid/kernel/resource/NetworkModelIntf.hpp"
 #include "simgrid/kernel/resource/Resource.hpp"
 #include "simgrid/s4u/Link.hpp"
 #include "src/kernel/lmm/maxmin.hpp"
@@ -30,7 +31,7 @@ namespace resource {
  * @brief SURF network model interface class
  * @details A model is an object which handles the interactions between its Resources and its Actions
  */
-class NetworkModel : public Model {
+class NetworkModel : public Model, public NetworkModelIntf {
 public:
   static config::Flag<double> cfg_tcp_gamma;
   static config::Flag<bool> cfg_crosstraffic;
@@ -41,14 +42,14 @@ public:
   ~NetworkModel() override;
 
   /**
-   * @brief Create a Link
+   * @brief Create a [WiFi]Link
    *
    * @param name The name of the Link
-   * @param bandwidth The initial bandwidth of the Link in bytes per second
-   * @param policy The sharing policy of the Link
+   * @param bandwidths The vector of bandwidths of the Link in bytes per second
    */
-  virtual LinkImpl* create_link(const std::string& name, const std::vector<double>& bandwidths,
-                                s4u::Link::SharingPolicy policy) = 0;
+  virtual LinkImpl* create_link(const std::string& name, const std::vector<double>& bandwidths) = 0;
+
+  virtual LinkImpl* create_wifi_link(const std::string& name, const std::vector<double>& bandwidths) = 0;
 
   /**
    * @brief Create a communication between two hosts.
@@ -71,7 +72,7 @@ public:
    * @param size The size of the message.
    * @return The latency factor.
    */
-  virtual double get_latency_factor(double size);
+  virtual double get_latency_factor(double /* size */) { return sg_latency_factor; }
 
   /**
    * @brief Get the right multiplicative factor for the bandwidth.
@@ -82,19 +83,12 @@ public:
    * @param size The size of the message.
    * @return The bandwidth factor.
    */
-  virtual double get_bandwidth_factor(double size);
+  virtual double get_bandwidth_factor(double /* size*/) { return sg_bandwidth_factor; }
 
-  /**
-   * @brief Get definitive bandwidth.
-   * @details It gives the minimum bandwidth between the one that would occur if no limitation was enforced, and the
-   * one arbitrary limited.
-   * @param rate The desired maximum bandwidth.
-   * @param bound The bandwidth with only the network taken into account.
-   * @param size The size of the message.
-   * @return The new bandwidth.
-   */
-  virtual double get_bandwidth_constraint(double rate, double bound, double size);
   double next_occurring_event_full(double now) override;
+
+  void set_lat_factor_cb(const std::function<NetworkFactorCb>& cb) override { THROW_UNIMPLEMENTED; }
+  void set_bw_factor_cb(const std::function<NetworkFactorCb>& cb) override { THROW_UNIMPLEMENTED; }
 
   LinkImpl* loopback_ = nullptr;
 };
@@ -125,18 +119,17 @@ public:
   s4u::Link* get_iface() { return &piface_; }
 
   /** @brief Get the bandwidth in bytes per second of current Link */
-  double get_bandwidth() const;
-
+  double get_bandwidth() const { return bandwidth_.peak * bandwidth_.scale; }
   /** @brief Update the bandwidth in bytes per second of current Link */
   virtual void set_bandwidth(double value) = 0;
 
   /** @brief Get the latency in seconds of current Link */
-  double get_latency() const;
-
+  double get_latency() const { return latency_.peak * latency_.scale; }
   /** @brief Update the latency in seconds of current Link */
   virtual LinkImpl* set_latency(double value) = 0;
 
   /** @brief The sharing policy */
+  virtual LinkImpl* set_sharing_policy(s4u::Link::SharingPolicy policy);
   virtual s4u::Link::SharingPolicy get_sharing_policy() const;
 
   /** @brief Check if the Link is used */
@@ -156,8 +149,8 @@ public:
    * Profile must contain absolute values */
   virtual LinkImpl* set_latency_profile(kernel::profile::Profile* profile);
 
-  Metric latency_                   = {0.0, 0, nullptr};
-  Metric bandwidth_                 = {1.0, 0, nullptr};
+  Metric latency_   = {0.0, 1, nullptr};
+  Metric bandwidth_ = {1.0, 1, nullptr};
 };
 
 /**********
@@ -209,5 +202,3 @@ public:
 } // namespace simgrid
 
 #endif /* SURF_NETWORK_INTERFACE_HPP_ */
-
-

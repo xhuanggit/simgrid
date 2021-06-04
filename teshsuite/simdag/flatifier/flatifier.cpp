@@ -118,10 +118,10 @@ static void dump_routes()
             });
 
   for (auto src_host : hosts) { // Routes from host
-    simgrid::kernel::routing::NetPoint* src = src_host->get_netpoint();
+    const simgrid::kernel::routing::NetPoint* src = src_host->get_netpoint();
     for (auto dst_host : hosts) { // Routes to host
       std::vector<simgrid::kernel::resource::LinkImpl*> route;
-      simgrid::kernel::routing::NetPoint* dst = dst_host->get_netpoint();
+      const simgrid::kernel::routing::NetPoint* dst = dst_host->get_netpoint();
       simgrid::kernel::routing::NetZoneImpl::get_global_route(src, dst, route, nullptr);
       if (route.empty())
         continue;
@@ -159,7 +159,7 @@ static void dump_routes()
     for (auto dst_host : hosts) { // Routes to host
       std::printf("  <route src=\"%s\" dst=\"%s\">\n  ", value1->get_cname(), dst_host->get_cname());
       std::vector<simgrid::kernel::resource::LinkImpl*> route;
-      simgrid::kernel::routing::NetPoint* netcardDst = dst_host->get_netpoint();
+      const simgrid::kernel::routing::NetPoint* netcardDst = dst_host->get_netpoint();
       simgrid::kernel::routing::NetZoneImpl::get_global_route(value1, netcardDst, route, nullptr);
       for (auto const& link : route)
         std::printf("<link_ctn id=\"%s\"/>", link->get_cname());
@@ -202,8 +202,8 @@ int main(int argc, char** argv)
 
   sg4::Engine e(&argc, argv);
 
-  if (not parse_cmdline(&timings, &platformFile, argc, argv) || not platformFile)
-    xbt_die("Invalid command line arguments: expected [--timings] platformFile");
+  xbt_assert(parse_cmdline(&timings, &platformFile, argc, argv) && platformFile,
+             "Invalid command line arguments: expected [--timings] platformFile");
 
   XBT_DEBUG("%d,%s", timings, platformFile);
 

@@ -19,15 +19,19 @@ namespace routing {
  *
  */
 
-class XBT_PRIVATE TorusZone : public ClusterZone {
+class XBT_PRIVATE TorusZone : public ClusterBase {
   std::vector<unsigned int> dimensions_;
 
 public:
-  using ClusterZone::ClusterZone;
-  void create_links_for_node(ClusterCreationArgs* cluster, int id, int rank, unsigned int position) override;
-  void get_local_route(NetPoint* src, NetPoint* dst, RouteCreationArgs* into, double* latency) override;
-  void parse_specific_arguments(ClusterCreationArgs* cluster) override;
+  explicit TorusZone(const std::string& name) : ClusterBase(name){};
+  void create_torus_links(int id, int rank, unsigned int position);
+  void get_local_route(const NetPoint* src, const NetPoint* dst, Route* into, double* latency) override;
+  void set_topology(const std::vector<unsigned int>& dimensions);
+
+  /** @brief Convert topology parameters from string to vector of uint */
+  static std::vector<unsigned int> parse_topo_parameters(const std::string& topo_parameters);
 };
+
 } // namespace routing
 } // namespace kernel
 } // namespace simgrid

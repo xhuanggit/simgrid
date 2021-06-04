@@ -12,6 +12,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 static void append_file(const s_xbt_log_appender_t* this_, const char* str)
 {
@@ -40,8 +41,7 @@ xbt_log_appender_t xbt_log_appender_file_new(const char* arg)
   res->do_append         = &append_file;
   res->free_             = &free_;
   res->data              = static_cast<void*>(fopen(arg, "w"));
-  if (res->data == nullptr)
-    xbt_die("Cannot open file: %s: %s", arg, strerror(errno));
+  xbt_assert(res->data != nullptr, "Cannot open file: %s: %s", arg, strerror(errno));
   return res;
 }
 
@@ -59,10 +59,9 @@ static constexpr const char* APPEND2_END_TOKEN_CLEAR = "\n                   ";
 static void open_append2_file(xbt_log_append2_file_t data){
   if(data->count<0) {
     //Roll
-    if (!data->file) {
+    if (not data->file) {
       data->file= fopen(data->filename, "w");
-      if (data->file == nullptr)
-        xbt_die("Cannot open file: %s: %s", data->filename, strerror(errno));
+      xbt_assert(data->file != nullptr, "Cannot open file: %s: %s", data->filename, strerror(errno));
     } else {
       fputs(APPEND2_END_TOKEN_CLEAR,data->file);
       fseek(data->file,0,SEEK_SET);
@@ -73,15 +72,14 @@ static void open_append2_file(xbt_log_append2_file_t data){
       fclose(data->file);
     char* pre=xbt_strdup(data->filename);
     char* sep=strchr(pre,'%');
-    if(!sep)
+    if (not sep)
       sep=pre+strlen(pre);
     const char* post    = sep + 1;
     *sep                = '\0';
     std::string newname = pre + std::to_string(data->count) + post;
     data->count++;
     data->file = fopen(newname.c_str(), "w");
-    if (data->file == nullptr)
-      xbt_die("Cannot open file: %s: %s", newname.c_str(), strerror(errno));
+    xbt_assert(data->file != nullptr, "Cannot open file: %s: %s", newname.c_str(), strerror(errno));
     xbt_free(pre);
   }
 }

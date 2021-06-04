@@ -38,11 +38,9 @@ double _smpi_cfg_host_speed;
 XBT_LOG_NEW_DEFAULT_SUBCATEGORY(smpi_config, smpi, "Logging specific to SMPI (config)");
 
 simgrid::config::Flag<std::string> _smpi_cfg_host_speed_string{
-    "smpi/host-speed",
-    "Speed of the host running the simulation (in flop/s). "
-    "Used to bench the operations.",
-    "20000f", [](const std::string& str) {
-      _smpi_cfg_host_speed = xbt_parse_get_speed("smpi/host-speed", 1, str.c_str(), "option", "smpi/host-speed");
+    "smpi/host-speed", "Speed of the host running the simulation (in flop/s). Used to bench the operations.", "20000f",
+    [](const std::string& str) {
+      _smpi_cfg_host_speed = xbt_parse_get_speed("smpi/host-speed", 1, str, "option smpi/host-speed");
       xbt_assert(_smpi_cfg_host_speed > 0.0, "Invalid value (%s) for 'smpi/host-speed': it must be positive.",
                  _smpi_cfg_host_speed_string.get().c_str());
     }};
@@ -118,8 +116,16 @@ simgrid::config::Flag<std::string> _smpi_cfg_comp_adjustment_file{"smpi/comp-adj
 #endif
 
 simgrid::config::Flag<double> _smpi_cfg_auto_shared_malloc_thresh("smpi/auto-shared-malloc-thresh",
-                                                                  "Threshold size for the automatic sharing of memory", 
+                                                                  "Threshold size for the automatic sharing of memory",
                                                                   0);
+
+simgrid::config::Flag<bool> _smpi_cfg_display_alloc("smpi/display-allocs",
+                                                    "Whether we should display a memory allocations analysis after simulation.",
+                                                     false);
+
+simgrid::config::Flag<int> _smpi_cfg_list_leaks("smpi/list-leaks",
+                                                "Whether we should display the n first MPI handle leaks (addresses and type only) after simulation",
+                                                -1);
 
 double smpi_cfg_host_speed(){
   return _smpi_cfg_host_speed;
@@ -165,6 +171,10 @@ bool smpi_cfg_trace_call_use_absolute_path(){
   return _smpi_cfg_trace_call_use_absolute_path;
 }
 
+bool smpi_cfg_display_alloc(){
+  return _smpi_cfg_list_leaks != -1 ? true : _smpi_cfg_display_alloc;
+}
+
 std::string smpi_cfg_comp_adjustment_file(){
   return _smpi_cfg_comp_adjustment_file;
 }
@@ -177,13 +187,12 @@ double smpi_cfg_auto_shared_malloc_thresh(){
   return _smpi_cfg_auto_shared_malloc_thresh;
 }
 
-void smpi_init_options(){
+void smpi_init_options(bool called_by_smpimain)
+{
   // return if already called
   if(_smpi_options_initialized)
     return;
-  simgrid::config::declare_flag<bool>("smpi/display-allocs", "Whether we should display a memory allocations analysis after simulation.", false);
   simgrid::config::declare_flag<bool>("smpi/display-timing", "Whether we should display the timing after simulation.", false);
-  simgrid::config::declare_flag<int>("smpi/list-leaks", "Whether we should display the n first MPI handle leaks (addresses and type only) after simulation", 0);
   simgrid::config::declare_flag<bool>("smpi/keep-temps", "Whether we should keep the generated temporary files.", false);
   simgrid::config::declare_flag<std::string>("smpi/tmpdir", "tmp dir for dlopen files", "/tmp");
 
@@ -204,30 +213,29 @@ void smpi_init_options(){
   if (default_privatization == nullptr)
     default_privatization = "no";
 
+  simgrid::config::declare_flag<std::string>(
+      "smpi/privatization", "How we should privatize global variable at runtime (no, yes, mmap, dlopen).",
+      default_privatization, [called_by_smpimain](const std::string& smpi_privatize_option) {
+        if (smpi_privatize_option == "no" || smpi_privatize_option == "0")
+          _smpi_cfg_privatization = SmpiPrivStrategies::NONE;
+        else if (smpi_privatize_option == "yes" || smpi_privatize_option == "1")
+          _smpi_cfg_privatization = SmpiPrivStrategies::DEFAULT;
+        else if (smpi_privatize_option == "mmap")
+          _smpi_cfg_privatization = SmpiPrivStrategies::MMAP;
+        else if (smpi_privatize_option == "dlopen")
+          _smpi_cfg_privatization = SmpiPrivStrategies::DLOPEN;
+        else
+          xbt_die("Invalid value for smpi/privatization: '%s'", smpi_privatize_option.c_str());
 
-  simgrid::config::declare_flag<std::string>( "smpi/privatization", 
-    "How we should privatize global variable at runtime (no, yes, mmap, dlopen).",
-    default_privatization, [](const std::string& smpi_privatize_option){
-      if (smpi_privatize_option == "no" || smpi_privatize_option == "0")
-        _smpi_cfg_privatization = SmpiPrivStrategies::NONE;
-      else if (smpi_privatize_option == "yes" || smpi_privatize_option == "1")
-        _smpi_cfg_privatization = SmpiPrivStrategies::DEFAULT;
-      else if (smpi_privatize_option == "mmap")
-        _smpi_cfg_privatization = SmpiPrivStrategies::MMAP;
-      else if (smpi_privatize_option == "dlopen")
-        _smpi_cfg_privatization = SmpiPrivStrategies::DLOPEN;
-      else
-        xbt_die("Invalid value for smpi/privatization: '%s'", smpi_privatize_option.c_str());
-        
-      if (not SMPI_switch_data_segment) {
-        XBT_DEBUG("Running without smpi_main(); disable smpi/privatization.");
-        _smpi_cfg_privatization = SmpiPrivStrategies::NONE;
-      }
-      if (not HAVE_WORKING_MMAP && _smpi_cfg_privatization == SmpiPrivStrategies::MMAP) {
-        XBT_INFO("mmap privatization is broken on this platform, switching to dlopen privatization instead.");
-        _smpi_cfg_privatization = SmpiPrivStrategies::DLOPEN;
-      }
-    });
+        if (not called_by_smpimain) {
+          XBT_DEBUG("Running without smpi_main(); disable smpi/privatization.");
+          _smpi_cfg_privatization = SmpiPrivStrategies::NONE;
+        }
+        if (not HAVE_WORKING_MMAP && _smpi_cfg_privatization == SmpiPrivStrategies::MMAP) {
+          XBT_INFO("mmap privatization is broken on this platform, switching to dlopen privatization instead.");
+          _smpi_cfg_privatization = SmpiPrivStrategies::DLOPEN;
+        }
+      });
 
   simgrid::config::declare_flag<std::string>("smpi/privatize-libs", 
                                             "Add libraries (; separated) to privatize (libgfortran for example)."
@@ -246,6 +254,9 @@ void smpi_init_options(){
       "smpi/ois", "Small messages timings (MPI_Isend minimum time for small messages)", "0:0:0:0:0");
   simgrid::config::declare_flag<std::string>(
       "smpi/or", "Small messages timings (MPI_Recv minimum time for small messages)", "0:0:0:0:0");
+
+  simgrid::config::declare_flag<bool>("smpi/finalization-barrier", "Do we add a barrier in MPI_Finalize or not", false);
+
   _smpi_options_initialized=true;
 }
 

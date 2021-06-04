@@ -57,7 +57,7 @@ public:
        * method in surf_presolve */
   };
 
-  kernel::resource::Cpu* create_cpu(s4u::Host* host, const std::vector<double>& speed_per_pstate) override;
+  kernel::resource::CpuImpl* create_cpu(s4u::Host* host, const std::vector<double>& speed_per_pstate) override;
   HostL07Model* hostModel_;
 };
 
@@ -67,8 +67,8 @@ public:
   NetworkL07Model(const NetworkL07Model&) = delete;
   NetworkL07Model& operator=(const NetworkL07Model&) = delete;
   ~NetworkL07Model() override;
-  kernel::resource::LinkImpl* create_link(const std::string& name, const std::vector<double>& bandwidths,
-                                          s4u::Link::SharingPolicy policy) override;
+  kernel::resource::LinkImpl* create_link(const std::string& name, const std::vector<double>& bandwidths) final;
+  kernel::resource::LinkImpl* create_wifi_link(const std::string& name, const std::vector<double>& bandwidths) override;
 
   kernel::resource::Action* communicate(s4u::Host* src, s4u::Host* dst, double size, double rate) override;
   void update_actions_state(double /*now*/, double /*delta*/) override{
@@ -84,9 +84,9 @@ public:
  * Resource *
  ************/
 
-class CpuL07 : public kernel::resource::Cpu {
+class CpuL07 : public kernel::resource::CpuImpl {
 public:
-  using kernel::resource::Cpu::Cpu;
+  using kernel::resource::CpuImpl::CpuImpl;
   CpuL07(const CpuL07&) = delete;
   CpuL07& operator=(const CpuL07&) = delete;
 
@@ -106,7 +106,7 @@ protected:
 
 class LinkL07 : public kernel::resource::LinkImpl {
 public:
-  LinkL07(const std::string& name, double bandwidth, s4u::Link::SharingPolicy policy, kernel::lmm::System* system);
+  LinkL07(const std::string& name, double bandwidth, kernel::lmm::System* system);
   LinkL07(const LinkL07&) = delete;
   LinkL07& operator=(const LinkL07&) = delete;
   ~LinkL07() override;

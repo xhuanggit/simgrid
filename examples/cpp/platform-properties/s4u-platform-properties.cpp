@@ -25,7 +25,7 @@ static void test_host(const std::string& hostname)
   for (auto const& kv : *hostprops)
     keys.push_back(kv.first);
   std::sort(keys.begin(), keys.end());
-  for (std::string key : keys)
+  for (const std::string& key : keys)
     XBT_INFO("  Host property: '%s' -> '%s'", key.c_str(), hostprops->at(key).c_str());
 
   XBT_INFO("== Try to get a host property that does not exist");
@@ -35,7 +35,8 @@ static void test_host(const std::string& hostname)
   XBT_INFO("== Try to get a host property that does exist");
   value = thehost->get_property(exist);
   xbt_assert(value, "\tProperty %s is undefined (where it should)", exist);
-  xbt_assert(!strcmp(value, "180"), "\tValue of property %s is defined to %s (where it should be 180)", exist, value);
+  xbt_assert(strcmp(value, "180") == 0, "\tValue of property %s is defined to %s (where it should be 180)", exist,
+             value);
   XBT_INFO("   Property: %s old value: %s", exist, value);
 
   XBT_INFO("== Trying to modify a host property");
@@ -44,20 +45,20 @@ static void test_host(const std::string& hostname)
   /* Test if we have changed the value */
   value = thehost->get_property(exist);
   xbt_assert(value, "Property %s is undefined (where it should)", exist);
-  xbt_assert(!strcmp(value, "250"), "Value of property %s is defined to %s (where it should be 250)", exist, value);
+  xbt_assert(strcmp(value, "250") == 0, "Value of property %s is defined to %s (where it should be 250)", exist, value);
   XBT_INFO("   Property: %s old value: %s", exist, value);
 
   /* Restore the value for the next test */
   thehost->set_property(exist, "180");
 
-  auto thezone = thehost->get_englobing_zone();
+  const auto* thezone = thehost->get_englobing_zone();
   XBT_INFO("== Print the properties of the zone '%s' that contains '%s'", thezone->get_cname(), hostname.c_str());
   const std::unordered_map<std::string, std::string>* zoneprops = thezone->get_properties();
   keys.clear();
   for (auto const& kv : *zoneprops)
     keys.push_back(kv.first);
   std::sort(keys.begin(), keys.end());
-  for (std::string key : keys)
+  for (const std::string& key : keys)
     XBT_INFO("  Zone property: '%s' -> '%s'", key.c_str(), zoneprops->at(key).c_str());
 }
 

@@ -3,12 +3,15 @@
 /* This program is free software; you can redistribute it and/or modify it
  * under the terms of the license (GNU LGPL) which comes with this package. */
 
+#include "simgrid/Exception.hpp"
 #include "simgrid/kernel/routing/NetPoint.hpp"
 #include "simgrid/s4u/Engine.hpp"
 #include "simgrid/s4u/Host.hpp"
 #include "simgrid/s4u/NetZone.hpp"
 #include "simgrid/simix.hpp"
 #include "simgrid/zone.h"
+#include "src/surf/network_interface.hpp"
+#include "xbt/parse_units.hpp"
 
 namespace simgrid {
 namespace s4u {
@@ -40,14 +43,14 @@ void NetZone::set_property(const std::string& key, const std::string& value)
 std::vector<NetZone*> NetZone::get_children() const
 {
   std::vector<NetZone*> res;
-  for (auto child : *(pimpl_->get_children()))
+  for (auto child : pimpl_->get_children())
     res.push_back(child->get_iface());
   return res;
 }
 
-NetZone* NetZone::add_child(const NetZone* new_zone)
+NetZone* NetZone::add_child(NetZone* new_zone)
 {
-  pimpl_->add_child(new_zone->get_impl());
+  new_zone->set_parent(this);
   return this;
 }
 
@@ -73,7 +76,7 @@ NetZone* NetZone::get_parent() const
 
 NetZone* NetZone::set_parent(const NetZone* parent)
 {
-  pimpl_->set_parent(parent->get_impl());
+  kernel::actor::simcall([this, parent] { pimpl_->set_parent(parent->get_impl()); });
   return this;
 }
 
@@ -97,9 +100,25 @@ int NetZone::add_component(kernel::routing::NetPoint* elm)
   return pimpl_->add_component(elm);
 }
 
+std::vector<kernel::resource::LinkImpl*> NetZone::get_link_list_impl(const std::vector<Link*>& link_list)
+{
+  std::vector<kernel::resource::LinkImpl*> links;
+  for (const auto& link : link_list) {
+    links.push_back(link->get_impl());
+  }
+  return links;
+}
+
 void NetZone::add_route(kernel::routing::NetPoint* src, kernel::routing::NetPoint* dst,
                         kernel::routing::NetPoint* gw_src, kernel::routing::NetPoint* gw_dst,
-                        std::vector<kernel::resource::LinkImpl*>& link_list, bool symmetrical)
+                        const std::vector<Link*>& link_list, bool symmetrical)
+{
+  pimpl_->add_route(src, dst, gw_src, gw_dst, NetZone::get_link_list_impl(link_list), symmetrical);
+}
+
+void NetZone::add_route(kernel::routing::NetPoint* src, kernel::routing::NetPoint* dst,
+                        kernel::routing::NetPoint* gw_src, kernel::routing::NetPoint* gw_dst,
+                        const std::vector<kernel::resource::LinkImpl*>& link_list, bool symmetrical)
 {
   pimpl_->add_route(src, dst, gw_src, gw_dst, link_list, symmetrical);
 }
@@ -117,6 +136,80 @@ void NetZone::extract_xbt_graph(const s_xbt_graph_t* graph, std::map<std::string
     child->extract_xbt_graph(graph, nodes, edges);
 
   pimpl_->get_graph(graph, nodes, edges);
+}
+
+NetZone* NetZone::seal()
+{
+  kernel::actor::simcall([this] { pimpl_->seal(); });
+  return this;
+}
+
+s4u::Host* NetZone::create_host(const std::string& name, double speed)
+{
+  return create_host(name, std::vector<double>{speed});
+}
+
+s4u::Host* NetZone::create_host(const std::string& name, const std::vector<double>& speed_per_pstate)
+{
+  return kernel::actor::simcall(
+      [this, &name, &speed_per_pstate] { return pimpl_->create_host(name, speed_per_pstate); });
+}
+
+s4u::Host* NetZone::create_host(const std::string& name, const std::string& speed)
+{
+  return create_host(name, std::vector<std::string>{speed});
+}
+
+s4u::Host* NetZone::create_host(const std::string& name, const std::vector<std::string>& speed_per_pstate)
+{
+  return create_host(name, Host::convert_pstate_speed_vector(speed_per_pstate));
+}
+
+s4u::Link* NetZone::create_link(const std::string& name, double bandwidth)
+{
+  return create_link(name, std::vector<double>{bandwidth});
+}
+
+s4u::Link* NetZone::create_link(const std::string& name, const std::vector<double>& bandwidths)
+{
+  return kernel::actor::simcall([this, &name, &bandwidths] { return pimpl_->create_link(name, bandwidths); });
+}
+
+s4u::Link* NetZone::create_link(const std::string& name, const std::string& bandwidth)
+{
+  return create_link(name, std::vector<std::string>{bandwidth});
+}
+
+s4u::Link* NetZone::create_link(const std::string& name, const std::vector<std::string>& bandwidths)
+{
+  std::vector<double> bw;
+  bw.reserve(bandwidths.size());
+  for (const auto& speed_str : bandwidths) {
+    try {
+      double speed = xbt_parse_get_bandwidth("", 0, speed_str, "");
+      bw.push_back(speed);
+    } catch (const simgrid::ParseError&) {
+      throw std::invalid_argument(std::string("Impossible to create link: ") + name +
+                                  std::string(". Invalid bandwidth: ") + speed_str);
+    }
+  }
+  return create_link(name, bw);
+}
+
+kernel::routing::NetPoint* NetZone::create_router(const std::string& name)
+{
+  return kernel::actor::simcall([this, &name] { return pimpl_->create_router(name); });
+}
+
+kernel::routing::NetPoint* NetZone::get_netpoint()
+{
+  return pimpl_->get_netpoint();
+}
+
+kernel::resource::NetworkModelIntf* NetZone::get_network_model() const
+{
+  kernel::resource::NetworkModelIntf* model = pimpl_->get_network_model().get();
+  return model;
 }
 } // namespace s4u
 } // namespace simgrid

@@ -38,11 +38,11 @@ public:
   /** Links to the lower level, where the position in the vector corresponds to
    * a port number.
    */
-  std::vector<FatTreeLink*> children;
+  std::vector<std::shared_ptr<FatTreeLink>> children;
   /** Links to the upper level, where the position in the vector corresponds to
    * a port number.
    */
-  std::vector<FatTreeLink*> parents;
+  std::vector<std::shared_ptr<FatTreeLink>> parents;
 
   /** Virtual link standing for the node global capacity.
    */
@@ -50,8 +50,11 @@ public:
   /** If present, communications from this node to this node will pass through it
    * instead of passing by an upper level switch.
    */
-  resource::LinkImpl* loopback;
-  FatTreeNode(const ClusterCreationArgs* cluster, int id, int level, int position);
+  resource::LinkImpl* loopback_;
+  FatTreeNode(int id, int level, int position, resource::LinkImpl* limiter, resource::LinkImpl* loopback)
+      : id(id), level(level), position(position), limiter_link_(limiter), loopback_(loopback)
+  {
+  }
 };
 
 /** @brief Link in a fat tree (@ref FatTreeZone).
@@ -61,15 +64,18 @@ public:
  */
 class FatTreeLink {
 public:
-  FatTreeLink(const ClusterCreationArgs* cluster, FatTreeNode* source, FatTreeNode* destination);
-  /** Link going up in the tree */
-  resource::LinkImpl* up_link_;
-  /** Link going down in the tree */
-  resource::LinkImpl* down_link_;
+  FatTreeLink(FatTreeNode* src, FatTreeNode* dst, resource::LinkImpl* linkup, resource::LinkImpl* linkdown)
+      : up_node_(dst), down_node_(src), up_link_(linkup), down_link_(linkdown)
+  {
+  }
   /** Upper end of the link */
   FatTreeNode* up_node_;
   /** Lower end of the link */
   FatTreeNode* down_node_;
+  /** Link going up in the tree */
+  resource::LinkImpl* up_link_;
+  /** Link going down in the tree */
+  resource::LinkImpl* down_link_;
 };
 
 /** @ingroup ROUTING_API
@@ -96,7 +102,7 @@ public:
  *
  * Routing is made using a destination-mod-k scheme.
  */
-class XBT_PRIVATE FatTreeZone : public ClusterZone {
+class XBT_PRIVATE FatTreeZone : public ClusterBase {
   /** @brief Generate the fat tree
    *
    * Once all processing nodes have been added, this will make sure the fat
@@ -109,36 +115,46 @@ class XBT_PRIVATE FatTreeZone : public ClusterZone {
   std::vector<unsigned int> num_parents_per_node_;  // number of parents by node
   std::vector<unsigned int> num_port_lower_level_;  // ports between each level l and l-1
 
-  std::map<int, FatTreeNode*> compute_nodes_;
-  std::vector<FatTreeNode*> nodes_;
-  std::vector<FatTreeLink*> links_;
+  std::map<int, std::shared_ptr<FatTreeNode>> compute_nodes_;
+  std::vector<std::shared_ptr<FatTreeNode>> nodes_;
+  std::vector<std::shared_ptr<FatTreeLink>> links_;
   std::vector<unsigned int> nodes_by_level_;
-
-  ClusterCreationArgs* cluster_ = nullptr;
 
   void add_link(FatTreeNode* parent, unsigned int parent_port, FatTreeNode* child, unsigned int child_port);
   int get_level_position(const unsigned int level);
+  void generate_switches(const s4u::ClusterCallbacks& set_callbacks);
   void generate_labels();
-  void generate_switches();
   int connect_node_to_parents(FatTreeNode* node);
   bool are_related(FatTreeNode* parent, FatTreeNode* child) const;
-  bool is_in_sub_tree(FatTreeNode* root, FatTreeNode* node) const;
+  bool is_in_sub_tree(const FatTreeNode* root, const FatTreeNode* node) const;
 
   void do_seal() override;
 
 public:
-  using ClusterZone::ClusterZone;
+  explicit FatTreeZone(const std::string& name) : ClusterBase(name){};
   FatTreeZone(const FatTreeZone&) = delete;
   FatTreeZone& operator=(const FatTreeZone&) = delete;
-  ~FatTreeZone() override;
-  void get_local_route(NetPoint* src, NetPoint* dst, RouteCreationArgs* into, double* latency) override;
+  void get_local_route(const NetPoint* src, const NetPoint* dst, Route* into, double* latency) override;
 
-  /** @brief Read the parameters in topo_parameters field.
+  /**
+   * @brief Parse the topology parameters from string format
    *
-   * It will also store the cluster for future use.
+   * @param topo_parameters String with topology, e.g. "2;4,4;1,2;1,2"
    */
-  void parse_specific_arguments(ClusterCreationArgs* cluster) override;
-  void add_processing_node(int id);
+  static s4u::FatTreeParams parse_topo_parameters(const std::string& topo_parameters);
+  /** @brief Checks topology parameters */
+  static void check_topology(unsigned int n_levels, const std::vector<unsigned int>& down_links,
+                             const std::vector<unsigned int>& up_links, const std::vector<unsigned int>& link_count);
+  /** @brief Set FatTree topology */
+  void set_topology(unsigned int n_levels, const std::vector<unsigned int>& down_links,
+                    const std::vector<unsigned int>& up_links, const std::vector<unsigned int>& link_count);
+  void add_processing_node(int id, resource::LinkImpl* limiter, resource::LinkImpl* loopback);
+  /**
+   * @brief Build upper levels (switches) in Fat-Tree
+   *
+   * Suppose that set_topology and add_processing_node have already been called
+   */
+  void build_upper_levels(const s4u::ClusterCallbacks& set_callbacks);
   void generate_dot_file(const std::string& filename = "fat_tree.dot") const;
 };
 } // namespace routing

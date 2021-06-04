@@ -1,5 +1,46 @@
 ----------------------------------------------------------------------------
 
+SimGrid (3.27.1) NOT RELEASED YET (v3.28 expected June 21. 2021, 03:32 UTC)
+
+New features:
+ - New plugin: Producer-Consumer with monitor. Just requires to include the
+   include/simgrid/plugins/ProducerConsumer.hpp header to be used. See the
+   associated example (examples/cpp/plugin-prodcons).
+
+S4U:
+ - Fixed a bug where Activity::wait_for() killed the activity on timeout.
+   Explicitly cancel the activity to get back to previous behavior.
+
+SMPI:
+ - The default SMPI compiler flags are no more taken from the environment.
+   They can be explicitly set through cmake parameters SMPI_C_FLAGS,
+   SMPI_CXX_FLAGS, or SMPI_Fortran_FLAGS.
+ - New option: --cfg=smpi/finalization-barrier, which can be used to add
+   a barrier inside MPI_Finalize. This can help for some codes which cleanup
+   data attached to a process, but still used in other SMPI processes.
+LUA:
+ - Lua platform files are deprecated. Their support will be dropped after v3.31.
+
+Simix:
+ - Legacy functions deprecated in this release: SIMIX_get_clock(), SIMIX_run().
+
+XBT:
+ - xbt_assert is not disabled anymore, even when built with enable_debug=off.
+
+Documentation:
+ - New tutorial: Model-checking and formal assessment
+
+Fixed bugs (FG#.. -> FramaGit bugs; FG!.. -> FG merge requests)
+ (FG: issues on Framagit; GF: issues on GForge; GH: issues on GitHub)
+ - FG#47: Complete and fix tests from teshuite/s4u/activity-lifecycle
+ - FG#64: Configuring smpi/IB-penalty-factors
+ - FG#67: Running computation concurrently with MPI_Iallreduce
+ - FG#69: Tutorial misleading users of pre-v3.26 versions of SimGrid
+ - FG#71: Segmentation fault on invalid gw_src/gw_dst
+ - GH#322: Issue when an actor kills his host vm
+
+----------------------------------------------------------------------------
+
 SimGrid (3.27) March 29. 2021
 
 The Ragnar Release (anniversary of the siege of Paris by Vikings in 845)

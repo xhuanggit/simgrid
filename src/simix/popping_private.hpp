@@ -44,11 +44,12 @@ union u_smx_scalar {
  * @brief Represents a simcall to the kernel.
  */
 struct s_smx_simcall {
-  simgrid::simix::Simcall call_           = simgrid::simix::Simcall::NONE;
-  smx_actor_t issuer_                     = nullptr;
-  smx_timer_t timeout_cb_                 = nullptr; // Callback to timeouts
+  simgrid::simix::Simcall call_                      = simgrid::simix::Simcall::NONE;
+  smx_actor_t issuer_                                = nullptr;
+  simgrid::kernel::timer::Timer* timeout_cb_         = nullptr; // Callback to timeouts
   simgrid::kernel::actor::SimcallObserver* observer_ = nullptr; // makes that simcall observable by the MC
-  unsigned int mc_max_consider_ = 0; // How many times this simcall should be used. If >1, this will be a fork.
+  unsigned int mc_max_consider_ =
+      0; // How many times this simcall should be used. If >1, this will be a fork in the state space.
   int mc_value_                           = 0;
   std::array<u_smx_scalar, 11> args_      = {};
   u_smx_scalar result_                    = {};
@@ -56,7 +57,7 @@ struct s_smx_simcall {
 
 /******************************** General *************************************/
 
-XBT_PRIVATE const char* SIMIX_simcall_name(simgrid::simix::Simcall kind);
+XBT_PRIVATE const char* SIMIX_simcall_name(const s_smx_simcall& simcall);
 XBT_PRIVATE void SIMIX_run_kernel(std::function<void()> const* code);
 XBT_PRIVATE void SIMIX_run_blocking(std::function<void()> const* code);
 

@@ -20,10 +20,14 @@ xbt::signal<void(Disk&)> Disk::on_creation;
 xbt::signal<void(Disk const&)> Disk::on_destruction;
 xbt::signal<void(Disk const&)> Disk::on_state_change;
 
-Disk* Disk::set_name(const std::string& name)
+const std::string& Disk::get_name() const
 {
-  name_ = name;
-  return this;
+  return pimpl_->get_name();
+}
+
+const char* Disk::get_cname() const
+{
+  return pimpl_->get_cname();
 }
 
 Disk* Disk::set_read_bandwidth(double read_bw)
@@ -69,41 +73,69 @@ const char* Disk::get_property(const std::string& key) const
   return pimpl_->get_property(key);
 }
 
-void Disk::set_property(const std::string& key, const std::string& value)
+Disk* Disk::set_property(const std::string& key, const std::string& value)
 {
   kernel::actor::simcall([this, &key, &value] { this->pimpl_->set_property(key, value); });
+  return this;
 }
 
-IoPtr Disk::io_init(sg_size_t size, Io::OpType type)
+Disk* Disk::set_properties(const std::unordered_map<std::string, std::string>& properties)
+{
+  kernel::actor::simcall([this, properties] { this->pimpl_->set_properties(properties); });
+  return this;
+}
+
+Disk* Disk::set_state_profile(kernel::profile::Profile* profile)
+{
+  xbt_assert(not pimpl_->is_sealed(), "Cannot set a state profile once the Disk is sealed");
+  kernel::actor::simcall([this, profile]() { this->pimpl_->set_state_profile(profile); });
+  return this;
+}
+
+Disk* Disk::set_read_bandwidth_profile(kernel::profile::Profile* profile)
+{
+  xbt_assert(not pimpl_->is_sealed(), "Cannot set a bandwidth profile once the Disk is sealed");
+  kernel::actor::simcall([this, profile]() { this->pimpl_->set_read_bandwidth_profile(profile); });
+  return this;
+}
+
+Disk* Disk::set_write_bandwidth_profile(kernel::profile::Profile* profile)
+{
+  xbt_assert(not pimpl_->is_sealed(), "Cannot set a bandwidth profile once the Disk is sealed");
+  kernel::actor::simcall([this, profile]() { this->pimpl_->set_write_bandwidth_profile(profile); });
+  return this;
+}
+
+IoPtr Disk::io_init(sg_size_t size, Io::OpType type) const
 {
   return Io::init()->set_disk(this)->set_size(size)->set_op_type(type);
 }
 
-IoPtr Disk::read_async(sg_size_t size)
+IoPtr Disk::read_async(sg_size_t size) const
 {
   return IoPtr(io_init(size, Io::OpType::READ))->vetoable_start();
 }
 
-sg_size_t Disk::read(sg_size_t size)
+sg_size_t Disk::read(sg_size_t size) const
 {
   return IoPtr(io_init(size, Io::OpType::READ))->vetoable_start()->wait()->get_performed_ioops();
 }
 
-IoPtr Disk::write_async(sg_size_t size)
+IoPtr Disk::write_async(sg_size_t size) const
 {
   return IoPtr(io_init(size, Io::OpType::WRITE)->vetoable_start());
 }
 
-sg_size_t Disk::write(sg_size_t size)
+sg_size_t Disk::write(sg_size_t size) const
 {
   return IoPtr(io_init(size, Io::OpType::WRITE))->vetoable_start()->wait()->get_performed_ioops();
 }
 
-void Disk::seal()
+Disk* Disk::seal()
 {
   kernel::actor::simcall([this]{ pimpl_->seal(); });
-  get_host()->add_disk(this);
   Disk::on_creation(*this);
+  return this;
 }
 } // namespace s4u
 } // namespace simgrid
@@ -130,11 +162,11 @@ double sg_disk_write_bandwidth(const_sg_disk_t disk)
   return disk->get_write_bandwidth();
 }
 
-sg_size_t sg_disk_read(sg_disk_t disk, sg_size_t size)
+sg_size_t sg_disk_read(const_sg_disk_t disk, sg_size_t size)
 {
   return disk->read(size);
 }
-sg_size_t sg_disk_write(sg_disk_t disk, sg_size_t size)
+sg_size_t sg_disk_write(const_sg_disk_t disk, sg_size_t size)
 {
   return disk->write(size);
 }

@@ -72,16 +72,19 @@ void parse_platform_file(const std::string& file)
    */
   if (is_lua) {
 #if SIMGRID_HAVE_LUA
+    static bool already_warned = false;
+    if (not already_warned) { // XBT_ATTRIB_DEPRECATED_v332
+      XBT_WARN("You are using a lua platform file. This feature is deprecated and will disappear after SimGrid v3.31.");
+      already_warned = true;
+    }
     lua_State* L = luaL_newstate();
     luaL_openlibs(L);
 
     luaL_loadfile(L, cfile); // This loads the file without executing it.
 
     /* Run the script */
-    if (lua_pcall(L, 0, 0, 0)) {
-      XBT_ERROR("FATAL ERROR:\n  %s: %s\n\n", "Lua call failed. Error message:", lua_tostring(L, -1));
-      xbt_die("Lua call failed. See Log");
-    }
+    xbt_assert(lua_pcall(L, 0, 0, 0) == 0, "FATAL ERROR:\n  %s: %s\n\n", "Lua call failed. Error message:",
+               lua_tostring(L, -1));
     lua_close(L);
     return;
 #else

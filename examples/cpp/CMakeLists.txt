@@ -76,10 +76,11 @@ foreach (example actor-create actor-daemon actor-exiting actor-join actor-kill
 		 		 network-wifi
                  io-async io-file-system io-file-remote io-disk-raw io-dependent
                  platform-failures platform-profile platform-properties
-                 plugin-host-load plugin-link-load
+                 plugin-host-load plugin-link-load plugin-prodcons
                  replay-comm replay-io
                  routing-get-clusters
-                 synchro-barrier synchro-condition-variable synchro-condition-variable-waituntil synchro-mutex synchro-semaphore)
+                 synchro-barrier synchro-condition-variable synchro-condition-variable-waituntil synchro-mutex synchro-semaphore
+                 clusters-multicpu network-factors)
 
   # Use default source file unless specified otherwise
   if(NOT DEFINED _${example}_sources)

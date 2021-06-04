@@ -37,6 +37,9 @@ class XBT_PUBLIC Comm : public Activity_T<Comm> {
 
   Comm() = default;
 
+protected:
+  void complete(Activity::State state) override;
+
 public:
 #ifndef DOXYGEN
   friend Mailbox; // Factory of comms
@@ -76,9 +79,7 @@ public:
   static int test_any(const std::vector<CommPtr>* comms);
 
   Comm* start() override;
-  Comm* wait() override;
   Comm* wait_for(double timeout) override;
-  Comm* cancel() override;
   bool test() override;
 
   /** Start the comm, and ignore its result. It can be completely forgotten after that. */

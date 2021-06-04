@@ -64,9 +64,8 @@ void ModelChecker::start()
   // The model-checked process SIGSTOP itself to signal it's ready:
   const pid_t pid = remote_process_->pid();
 
-  pid_t res = waitpid(pid, &status, WAITPID_CHECKED_FLAGS);
-  if (res < 0 || not WIFSTOPPED(status) || WSTOPSIG(status) != SIGSTOP)
-    xbt_die("Could not wait model-checked process");
+  xbt_assert(waitpid(pid, &status, WAITPID_CHECKED_FLAGS) == pid && WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP,
+             "Could not wait model-checked process");
 
   if (not _sg_mc_dot_output_file.get().empty())
     MC_init_dot_output();
@@ -105,11 +104,12 @@ void ModelChecker::shutdown()
 {
   XBT_DEBUG("Shutting down model-checker");
 
-  RemoteProcess* process = &this->get_remote_process();
-  if (process->running()) {
+  RemoteProcess& process = get_remote_process();
+  if (process.running()) {
     XBT_DEBUG("Killing process");
-    kill(process->pid(), SIGKILL);
-    process->terminate();
+    finalize_app(true);
+    kill(process.pid(), SIGKILL);
+    process.terminate();
   }
 }
 
@@ -240,9 +240,7 @@ bool ModelChecker::handle_message(const char* buffer, ssize_t size)
 /** Terminate the model-checker application */
 void ModelChecker::exit(int status)
 {
-  // TODO, terminate the model checker politely instead of exiting rudely
-  if (get_remote_process().running())
-    kill(get_remote_process().pid(), SIGKILL);
+  shutdown();
   ::exit(status);
 }
 
@@ -270,6 +268,7 @@ void ModelChecker::handle_waitpid()
         xbt_assert(ptrace(PTRACE_GETEVENTMSG, remote_process_->pid(), 0, &status) != -1, "Could not get exit status");
         if (WIFSIGNALED(status)) {
           MC_report_crash(status);
+          this->get_remote_process().terminate();
           this->exit(SIMGRID_MC_EXIT_PROGRAM_CRASH);
         }
       }
@@ -289,6 +288,7 @@ void ModelChecker::handle_waitpid()
 
       else if (WIFSIGNALED(status)) {
         MC_report_crash(status);
+        this->get_remote_process().terminate();
         this->exit(SIMGRID_MC_EXIT_PROGRAM_CRASH);
       } else if (WIFEXITED(status)) {
         XBT_DEBUG("Child process is over");
@@ -310,14 +310,14 @@ void ModelChecker::handle_simcall(Transition const& transition)
   s_mc_message_simcall_handle_t m;
   memset(&m, 0, sizeof(m));
   m.type  = MessageType::SIMCALL_HANDLE;
-  m.pid_              = transition.pid_;
+  m.aid_              = transition.aid_;
   m.times_considered_ = transition.times_considered_;
   checker_side_.get_channel().send(m);
   this->remote_process_->clear_cache();
   if (this->remote_process_->running())
     checker_side_.dispatch();
 }
-bool ModelChecker::simcall_is_visible(int aid)
+bool ModelChecker::simcall_is_visible(aid_t aid)
 {
   xbt_assert(mc_model_checker != nullptr, "This should be called from the checker side");
 
@@ -336,13 +336,13 @@ bool ModelChecker::simcall_is_visible(int aid)
              to_c_str(answer.type), (int)answer.type, (int)s, (int)MessageType::SIMCALL_IS_VISIBLE_ANSWER,
              (int)sizeof(answer));
 
-  XBT_DEBUG("is_visible(%d) is returning %s", aid, answer.value ? "true" : "false");
+  XBT_DEBUG("is_visible(%ld) is returning %s", aid, answer.value ? "true" : "false");
 
   this->remote_process_->clear_cache();
   return answer.value;
 }
 
-std::string ModelChecker::simcall_to_string(MessageType type, int aid, int times_considered)
+std::string ModelChecker::simcall_to_string(MessageType type, aid_t aid, int times_considered)
 {
   xbt_assert(mc_model_checker != nullptr, "This should be called from the checker side");
 
@@ -365,33 +365,35 @@ std::string ModelChecker::simcall_to_string(MessageType type, int aid, int times
   return std::string(answer.value);
 }
 
-std::string ModelChecker::simcall_to_string(int aid, int times_considered)
+std::string ModelChecker::simcall_to_string(aid_t aid, int times_considered)
 {
   std::string answer = simcall_to_string(MessageType::SIMCALL_TO_STRING, aid, times_considered);
-  XBT_DEBUG("to_string(%d) is returning %s", aid, answer.c_str());
+  XBT_DEBUG("to_string(%ld) is returning %s", aid, answer.c_str());
   return answer;
 }
 
-std::string ModelChecker::simcall_dot_label(int aid, int times_considered)
+std::string ModelChecker::simcall_dot_label(aid_t aid, int times_considered)
 {
   std::string answer = simcall_to_string(MessageType::SIMCALL_DOT_LABEL, aid, times_considered);
-  XBT_DEBUG("dot_label(%d) is returning %s", aid, answer.c_str());
+  XBT_DEBUG("dot_label(%ld) is returning %s", aid, answer.c_str());
   return answer;
 }
 
-void ModelChecker::finalize_app()
+void ModelChecker::finalize_app(bool terminate_asap)
 {
-  int res = checker_side_.get_channel().send(MessageType::FINALIZE);
-  xbt_assert(res == 0, "Could not ask the app to finalize MPI on need");
-  s_mc_message_int_t message;
-  ssize_t s = checker_side_.get_channel().receive(message);
-  xbt_assert(s != -1, "Could not receive answer to FINALIZE");
+  s_mc_message_int_t m;
+  memset(&m, 0, sizeof m);
+  m.type  = MessageType::FINALIZE;
+  m.value = terminate_asap;
+  xbt_assert(checker_side_.get_channel().send(m) == 0, "Could not ask the app to finalize on need");
+
+  s_mc_message_t answer;
+  xbt_assert(checker_side_.get_channel().receive(answer) != -1, "Could not receive answer to FINALIZE");
 }
 
 bool ModelChecker::checkDeadlock()
 {
-  int res = checker_side_.get_channel().send(MessageType::DEADLOCK_CHECK);
-  xbt_assert(res == 0, "Could not check deadlock state");
+  xbt_assert(checker_side_.get_channel().send(MessageType::DEADLOCK_CHECK) == 0, "Could not check deadlock state");
   s_mc_message_int_t message;
   ssize_t s = checker_side_.get_channel().receive(message);
   xbt_assert(s != -1, "Could not receive message");

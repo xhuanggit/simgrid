@@ -6,6 +6,7 @@
 #ifndef SIMGRID_KERNEL_ACTOR_ACTORIMPL_HPP
 #define SIMGRID_KERNEL_ACTOR_ACTORIMPL_HPP
 
+#include "simgrid/kernel/Timer.hpp"
 #include "simgrid/s4u/Actor.hpp"
 #include "src/simix/popping_private.hpp"
 #include "xbt/PropertyHolder.hpp"
@@ -41,8 +42,8 @@ public:
   static ActorImpl* self();
   double get_kill_time() const;
   void set_kill_time(double kill_time);
-  boost::intrusive::list_member_hook<> host_actor_list_hook;   /* simgrid::simix::Host::process_list */
-  boost::intrusive::list_member_hook<> smx_destroy_list_hook;  /* simix_global->actors_to_destroy */
+  boost::intrusive::list_member_hook<> host_actor_list_hook;   /* simgrid::surf::HostImpl::actor_list_ */
+  boost::intrusive::list_member_hook<> kernel_destroy_list_hook; /* EngineImpl actors_to_destroy */
   boost::intrusive::list_member_hook<> smx_synchro_hook;       /* {mutex,cond,sem}->sleeping */
 
   const xbt::string& get_name() const { return name_; }
@@ -71,12 +72,13 @@ public:
   activity::ActivityImplPtr waiting_synchro_ = nullptr; /* the current blocking synchro if any */
   std::list<activity::ActivityImplPtr> activities_;     /* the current non-blocking synchros */
   s_smx_simcall simcall_;
-  /* list of functions executed when the process dies */
+  std::vector<SimcallObserver*> observer_stack_;
+  /* list of functions executed when the actor dies */
   std::shared_ptr<std::vector<std::function<void(bool)>>> on_exit =
       std::make_shared<std::vector<std::function<void(bool)>>>();
 
   std::function<void()> code_;
-  simix::Timer* kill_timer_ = nullptr;
+  timer::Timer* kill_timer_ = nullptr;
 
 private:
   /* Refcounting */
@@ -121,10 +123,8 @@ public:
   ActorImpl* start(const ActorCode& code);
 
   static ActorImplPtr create(const std::string& name, const ActorCode& code, void* data, s4u::Host* host,
-                             const std::unordered_map<std::string, std::string>* properties,
                              const ActorImpl* parent_actor);
-  static ActorImplPtr attach(const std::string& name, void* data, s4u::Host* host,
-                             const std::unordered_map<std::string, std::string>* properties);
+  static ActorImplPtr attach(const std::string& name, void* data, s4u::Host* host);
   static void detach();
   void cleanup();
   void exit();
@@ -156,16 +156,18 @@ public:
   void* data                                                               = nullptr;
   s4u::Host* host                                                          = nullptr;
   double kill_time                                                         = 0.0;
-  std::shared_ptr<const std::unordered_map<std::string, std::string>> properties = nullptr;
+  const std::unordered_map<std::string, std::string> properties{};
   bool auto_restart                                                        = false;
   bool daemon_                                                             = false;
-  /* list of functions executed when the process dies */
+  /* list of functions executed when the actor dies */
   const std::shared_ptr<std::vector<std::function<void(bool)>>> on_exit;
 
-  ProcessArg()                                                             = default;
+  ProcessArg()                  = delete;
+  ProcessArg(const ProcessArg&) = delete;
+  ProcessArg& operator=(const ProcessArg&) = delete;
 
   explicit ProcessArg(const std::string& name, const std::function<void()>& code, void* data, s4u::Host* host,
-                      double kill_time, std::shared_ptr<std::unordered_map<std::string, std::string>> properties,
+                      double kill_time, const std::unordered_map<std::string, std::string>& properties,
                       bool auto_restart)
       : name(name)
       , code(code)
@@ -187,7 +189,6 @@ public:
       , daemon_(actor->is_daemon())
       , on_exit(actor->on_exit)
   {
-    properties.reset(actor->get_properties(), [](decltype(actor->get_properties())) {});
   }
 };
 
@@ -198,12 +199,10 @@ using SynchroList =
 
 XBT_PUBLIC void create_maestro(const std::function<void()>& code);
 XBT_PUBLIC unsigned long get_maxpid();
-XBT_PUBLIC void* get_maxpid_addr(); // In MC mode, the application sends this pointers to the MC
+XBT_PUBLIC unsigned long* get_maxpid_addr(); // In MC mode, the application sends this pointers to the MC
 
 } // namespace actor
 } // namespace kernel
 } // namespace simgrid
-
-extern void (*SMPI_switch_data_segment)(simgrid::s4u::ActorPtr actor);
 
 #endif

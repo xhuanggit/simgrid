@@ -21,6 +21,8 @@ class XBT_PUBLIC ExecImpl : public ActivityImpl_T<ExecImpl> {
   actor::ActorImpl* actor_            = nullptr;
   double sharing_penalty_             = 1.0;
   double bound_                       = 0.0;
+  double start_time_                  = -1.0;
+  double finish_time_                 = -1.0;
   std::vector<s4u::Host*> hosts_;
   std::vector<double> flops_amounts_;
   std::vector<double> bytes_amounts_;
@@ -34,9 +36,13 @@ public:
   ExecImpl& set_bound(double bound);
   ExecImpl& set_sharing_penalty(double sharing_penalty);
 
+  double get_start_time() const { return start_time_; }
+  double get_finish_time() const { return finish_time_; }
+
   ExecImpl& set_flops_amount(double flop_amount);
   ExecImpl& set_host(s4u::Host* host);
   s4u::Host* get_host() const { return hosts_.front(); }
+  const std::vector<s4u::Host*>& get_hosts() const { return hosts_; }
 
   ExecImpl& set_flops_amounts(const std::vector<double>& flops_amounts);
   ExecImpl& set_bytes_amounts(const std::vector<double>& bytes_amounts);
@@ -51,7 +57,7 @@ public:
   void post() override;
   void finish() override;
 
-  static void wait_any_for(actor::ActorImpl* issuer, const std::vector<ExecImpl*>* execs, double timeout);
+  static void wait_any_for(actor::ActorImpl* issuer, const std::vector<ExecImpl*>& execs, double timeout);
 
   static xbt::signal<void(ExecImpl const&, s4u::Host*)> on_migration;
 };

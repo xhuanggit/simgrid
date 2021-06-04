@@ -20,6 +20,8 @@
 #include "simgrid/forward.h" // aid_t
 #include <array>
 #include <cstdint>
+#include <xbt/dynar.h>
+#include <xbt/mmalloc.h>
 #include <xbt/utility.hpp>
 
 // ***** Messages
@@ -59,10 +61,10 @@ struct s_mc_message_int_t {
 /* Client->Server */
 struct s_mc_message_initial_addresses_t {
   simgrid::mc::MessageType type;
-  void* mmalloc_default_mdp;
-  void* maxpid;
-  void* actors;
-  void* dead_actors;
+  xbt_mheap_t mmalloc_default_mdp;
+  unsigned long* maxpid;
+  xbt_dynar_t actors;
+  xbt_dynar_t dead_actors;
 };
 
 struct s_mc_message_ignore_heap_t {
@@ -94,7 +96,7 @@ struct s_mc_message_register_symbol_t {
 /* Server -> client */
 struct s_mc_message_simcall_handle_t {
   simgrid::mc::MessageType type;
-  unsigned long pid_;
+  aid_t aid_;
   int times_considered_;
 };
 
@@ -111,7 +113,7 @@ struct s_mc_message_actor_enabled_t {
 /* RPC */
 struct s_mc_message_simcall_is_visible_t { // MessageType::SIMCALL_IS_VISIBLE
   simgrid::mc::MessageType type;
-  int aid;
+  aid_t aid;
 };
 struct s_mc_message_simcall_is_visible_answer_t { // MessageType::SIMCALL_IS_VISIBLE_ANSWER
   simgrid::mc::MessageType type;
@@ -120,7 +122,7 @@ struct s_mc_message_simcall_is_visible_answer_t { // MessageType::SIMCALL_IS_VIS
 
 struct s_mc_message_simcall_to_string_t { // MessageType::SIMCALL_TO_STRING or MessageType::SIMCALL_DOT_LABEL
   simgrid::mc::MessageType type;
-  int aid;
+  aid_t aid;
   int time_considered;
 };
 struct s_mc_message_simcall_to_string_answer_t { // MessageType::SIMCALL_TO_STRING_ANSWER

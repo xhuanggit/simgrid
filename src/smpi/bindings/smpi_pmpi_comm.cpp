@@ -108,6 +108,7 @@ int PMPI_Comm_free(MPI_Comm * comm)
 {
   CHECK_NULL(1, MPI_ERR_ARG, comm)
   CHECK_COMM2(1, *comm)
+  CHECK_MPI_NULL(1, MPI_COMM_WORLD, MPI_ERR_COMM, *comm)
   simgrid::smpi::Comm::destroy(*comm);
   *comm = MPI_COMM_NULL;
   return MPI_SUCCESS;
@@ -127,11 +128,10 @@ int PMPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm* comm_out)
 {
   CHECK_NULL(4, MPI_ERR_ARG, comm_out)
   CHECK_COMM2(1, comm)
-  if( color != MPI_UNDEFINED)//we use a negative value for MPI_UNDEFINED 
+  if( color != MPI_UNDEFINED)//we use a negative value for MPI_UNDEFINED
     CHECK_NEGATIVE(3, MPI_ERR_ARG, color)
-  smpi_bench_end();
+  const SmpiBenchGuard suspend_bench;
   *comm_out = comm->split(color, key);
-  smpi_bench_begin();
   return MPI_SUCCESS;
 }
 
@@ -139,9 +139,8 @@ int PMPI_Comm_split_type(MPI_Comm comm, int split_type, int key, MPI_Info info, 
 {
   CHECK_COMM(1)
   CHECK_NULL(5, MPI_ERR_ARG, newcomm)
-  smpi_bench_end();
+  const SmpiBenchGuard suspend_bench;
   *newcomm = comm->split_type(split_type, key, info);
-  smpi_bench_begin();
   return MPI_SUCCESS;
 }
 
@@ -150,9 +149,8 @@ int PMPI_Comm_create_group(MPI_Comm comm, MPI_Group group, int, MPI_Comm* comm_o
   CHECK_COMM(1)
   CHECK_GROUP(2, group)
   CHECK_NULL(5, MPI_ERR_ARG, comm_out)
-  smpi_bench_end();
+  const SmpiBenchGuard suspend_bench;
   int retval = MPI_Comm_create(comm, group, comm_out);
-  smpi_bench_begin();
   return retval;
 }
 
@@ -182,7 +180,7 @@ int PMPI_Comm_get_info(MPI_Comm comm, MPI_Info* info)
 {
   CHECK_COMM(1)
   CHECK_NULL(2, MPI_ERR_ARG, info)
-  *info = comm->info();
+  *info = new simgrid::smpi::Info(comm->info());
   return MPI_SUCCESS;
 }
 
@@ -208,8 +206,18 @@ int PMPI_Comm_free_keyval(int* keyval) {
   return PMPI_Keyval_free(keyval);
 }
 
+int PMPI_Comm_test_inter(MPI_Comm comm, int* flag){
+  CHECK_COMM(1)
+
+  if(flag == nullptr)
+    return MPI_ERR_ARG;
+  *flag=false;
+  return MPI_SUCCESS;
+}
+
 int PMPI_Attr_delete(MPI_Comm comm, int keyval) {
   CHECK_COMM(1)
+  CHECK_VAL(2, MPI_KEYVAL_INVALID, MPI_ERR_KEYVAL, keyval)
   if(keyval == MPI_TAG_UB||keyval == MPI_HOST||keyval == MPI_IO ||keyval == MPI_WTIME_IS_GLOBAL||keyval == MPI_APPNUM
        ||keyval == MPI_UNIVERSE_SIZE||keyval == MPI_LASTUSEDCODE)
     return MPI_ERR_ARG;
@@ -227,6 +235,7 @@ int PMPI_Attr_get(MPI_Comm comm, int keyval, void* attr_value, int* flag) {
   CHECK_NULL(4, MPI_ERR_ARG, flag)
   *flag = 0;
   CHECK_COMM(1)
+  CHECK_VAL(2, MPI_KEYVAL_INVALID, MPI_ERR_KEYVAL, keyval)
 
   switch (keyval) {
   case MPI_HOST:
@@ -259,6 +268,7 @@ int PMPI_Attr_get(MPI_Comm comm, int keyval, void* attr_value, int* flag) {
 
 int PMPI_Attr_put(MPI_Comm comm, int keyval, void* attr_value) {
   CHECK_COMM(1)
+  CHECK_VAL(2, MPI_KEYVAL_INVALID, MPI_ERR_KEYVAL, keyval)
   if(keyval == MPI_TAG_UB||keyval == MPI_HOST||keyval == MPI_IO ||keyval == MPI_WTIME_IS_GLOBAL||keyval == MPI_APPNUM
        ||keyval == MPI_UNIVERSE_SIZE||keyval == MPI_LASTUSEDCODE)
     return MPI_ERR_ARG;
@@ -268,7 +278,9 @@ int PMPI_Attr_put(MPI_Comm comm, int keyval, void* attr_value) {
 
 int PMPI_Errhandler_free(MPI_Errhandler* errhandler){
   CHECK_NULL(1, MPI_ERR_ARG, errhandler)
+  CHECK_MPI_NULL(1, MPI_ERRHANDLER_NULL, MPI_ERR_ARG, *errhandler)
   simgrid::smpi::Errhandler::unref(*errhandler);
+  *errhandler = MPI_ERRHANDLER_NULL;
   return MPI_SUCCESS;
 }
 
@@ -299,6 +311,18 @@ int PMPI_Comm_call_errhandler(MPI_Comm comm,int errorcode){
   err->call(comm, errorcode);
   simgrid::smpi::Errhandler::unref(err);
   return MPI_SUCCESS;
+}
+
+MPI_Errhandler PMPI_Errhandler_f2c(MPI_Fint errhan){
+  if(errhan==-1)
+    return MPI_ERRHANDLER_NULL;
+  return simgrid::smpi::Errhandler::f2c(errhan);
+}
+
+MPI_Fint PMPI_Errhandler_c2f(MPI_Errhandler errhan){
+  if(errhan==MPI_ERRHANDLER_NULL)
+    return -1;
+  return errhan->c2f();
 }
 
 int PMPI_Comm_create_errhandler( MPI_Comm_errhandler_fn *function, MPI_Errhandler *errhandler){

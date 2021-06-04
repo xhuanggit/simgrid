@@ -56,11 +56,10 @@ CpuTiProfile::CpuTiProfile(const profile::Profile* profile)
  */
 double CpuTiTmgr::integrate(double a, double b) const
 {
-  if ((a < 0.0) || (a > b)) {
-    xbt_die("Error, invalid integration interval [%.2f,%.2f]. "
-            "You probably have a task executing with negative computation amount. Check your code.",
-            a, b);
-  }
+  xbt_assert(a >= 0.0 && a <= b,
+             "Error, invalid integration interval [%.2f,%.2f]. You probably have a task executing with negative "
+             "computation amount. Check your code.",
+             a, b);
   if (fabs(a - b) < EPSILON)
     return 0.0;
 
@@ -275,7 +274,7 @@ void CpuTiModel::create_pm_models()
   simgrid::s4u::Engine::get_instance()->get_netzone_root()->get_impl()->set_cpu_pm_model(cpu_model_pm);
 }
 
-Cpu* CpuTiModel::create_cpu(s4u::Host* host, const std::vector<double>& speed_per_pstate)
+CpuImpl* CpuTiModel::create_cpu(s4u::Host* host, const std::vector<double>& speed_per_pstate)
 {
   return (new CpuTi(host, speed_per_pstate))->set_model(this);
 }
@@ -314,7 +313,7 @@ void CpuTiModel::update_actions_state(double now, double /*delta*/)
 /************
  * Resource *
  ************/
-CpuTi::CpuTi(s4u::Host* host, const std::vector<double>& speed_per_pstate) : Cpu(host, speed_per_pstate)
+CpuTi::CpuTi(s4u::Host* host, const std::vector<double>& speed_per_pstate) : CpuImpl(host, speed_per_pstate)
 {
   speed_.peak = speed_per_pstate.front();
   XBT_DEBUG("CPU create: peak=%f", speed_.peak);
@@ -328,7 +327,7 @@ CpuTi::~CpuTi()
   delete speed_integrated_trace_;
 }
 
-Cpu* CpuTi::set_speed_profile(kernel::profile::Profile* profile)
+CpuImpl* CpuTi::set_speed_profile(kernel::profile::Profile* profile)
 {
   delete speed_integrated_trace_;
   speed_integrated_trace_ = new CpuTiTmgr(profile, speed_.scale);
@@ -412,7 +411,7 @@ void CpuTi::update_actions_finish_time(double now)
   }
 
   for (CpuTiAction& action : action_set_) {
-    double min_finish = -1;
+    double min_finish = NO_MAX_DURATION;
     /* action not running, skip it */
     if (action.get_state_set() != get_model()->get_started_action_set())
       continue;
@@ -455,7 +454,7 @@ bool CpuTi::is_used() const
 double CpuTi::get_speed_ratio()
 {
   speed_.scale = speed_integrated_trace_->get_power_scale(surf_get_clock());
-  return Cpu::get_speed_ratio();
+  return CpuImpl::get_speed_ratio();
 }
 
 /** @brief Update the remaining amount of actions */
@@ -588,26 +587,6 @@ void CpuTiAction::resume()
     set_suspend_state(Action::SuspendStates::RUNNING);
     cpu_->set_modified(true);
   }
-  XBT_OUT();
-}
-
-void CpuTiAction::set_max_duration(double duration)
-{
-  double min_finish;
-
-  XBT_IN("(%p,%g)", this, duration);
-
-  Action::set_max_duration(duration);
-
-  if (duration >= 0)
-    min_finish = (get_start_time() + get_max_duration()) < get_finish_time() ? (get_start_time() + get_max_duration())
-                                                                             : get_finish_time();
-  else
-    min_finish = get_finish_time();
-
-  /* add in action heap */
-  get_model()->get_action_heap().update(this, min_finish, ActionHeap::Type::unset);
-
   XBT_OUT();
 }
 

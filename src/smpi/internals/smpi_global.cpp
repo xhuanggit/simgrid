@@ -4,12 +4,13 @@
  * under the terms of the license (GNU LGPL) which comes with this package. */
 
 #include "mc/mc.h"
-#include "simgrid/s4u/Engine.hpp"
 #include "simgrid/plugins/file_system.h"
+#include "simgrid/s4u/Engine.hpp"
 #include "smpi_coll.hpp"
+#include "smpi_config.hpp"
 #include "smpi_f2c.hpp"
 #include "smpi_host.hpp"
-#include "smpi_config.hpp"
+#include "src/kernel/EngineImpl.hpp"
 #include "src/kernel/activity/CommImpl.hpp"
 #include "src/simix/smx_private.hpp"
 #include "src/smpi/include/smpi_actor.hpp"
@@ -20,7 +21,6 @@
 #include <array>
 #include <boost/algorithm/string.hpp> /* split */
 #include <boost/tokenizer.hpp>
-#include <boost/core/demangle.hpp>
 #include <cerrno>
 #include <cinttypes>
 #include <cstdint> /* intmax_t */
@@ -184,21 +184,15 @@ void smpi_comm_copy_buffer_callback(simgrid::kernel::activity::CommImpl* comm, v
   auto private_blocks = merge_private_blocks(src_private_blocks, dst_private_blocks);
   check_blocks(private_blocks, buff_size);
   void* tmpbuff=buff;
-  if ((smpi_cfg_privatization() == SmpiPrivStrategies::MMAP) &&
-      (static_cast<char*>(buff) >= smpi_data_exe_start) &&
-      (static_cast<char*>(buff) < smpi_data_exe_start + smpi_data_exe_size)) {
+  if (smpi_switch_data_segment(comm->src_actor_->get_iface(), buff)) {
     XBT_DEBUG("Privatization : We are copying from a zone inside global memory... Saving data to temp buffer !");
-    smpi_switch_data_segment(comm->src_actor_->get_iface());
     tmpbuff = xbt_malloc(buff_size);
     memcpy_private(tmpbuff, buff, private_blocks);
   }
 
-  if ((smpi_cfg_privatization() == SmpiPrivStrategies::MMAP) &&
-      ((char*)comm->dst_buff_ >= smpi_data_exe_start) &&
-      ((char*)comm->dst_buff_ < smpi_data_exe_start + smpi_data_exe_size)) {
+  if (smpi_switch_data_segment(comm->dst_actor_->get_iface(), comm->dst_buff_))
     XBT_DEBUG("Privatization : We are copying to a zone inside global memory - Switch data segment");
-    smpi_switch_data_segment(comm->dst_actor_->get_iface());
-  }
+
   XBT_DEBUG("Copying %zu bytes from %p to %p", buff_size, tmpbuff, comm->dst_buff_);
   memcpy_private(comm->dst_buff_, tmpbuff, private_blocks);
 
@@ -351,8 +345,8 @@ static void smpi_copy_file(const std::string& src, const std::string& target, of
 {
   int fdin = open(src.c_str(), O_RDONLY);
   xbt_assert(fdin >= 0, "Cannot read from %s. Please make sure that the file exists and is executable.", src.c_str());
-  XBT_ATTRIB_UNUSED int unlink_status = unlink(target.c_str());
-  xbt_assert(unlink_status == 0 || errno == ENOENT, "Failed to unlink file %s: %s", target.c_str(), strerror(errno));
+  xbt_assert(unlink(target.c_str()) == 0 || errno == ENOENT, "Failed to unlink file %s: %s", target.c_str(),
+             strerror(errno));
   int fdout = open(target.c_str(), O_CREAT | O_RDWR | O_EXCL, S_IRWXU);
   xbt_assert(fdout >= 0, "Cannot write into %s: %s", target.c_str(), strerror(errno));
 
@@ -363,10 +357,10 @@ static void smpi_copy_file(const std::string& src, const std::string& target, of
     close(fdin);
     close(fdout);
     return;
-  } else if (sent_size != -1 || errno != ENOSYS) {
-    xbt_die("Error while copying %s: only %zd bytes copied instead of %" PRIdMAX " (errno: %d -- %s)", target.c_str(),
-            sent_size, static_cast<intmax_t>(fdin_size), errno, strerror(errno));
   }
+  xbt_assert(sent_size == -1 && errno == ENOSYS,
+             "Error while copying %s: only %zd bytes copied instead of %" PRIdMAX " (errno: %d -- %s)", target.c_str(),
+             sent_size, static_cast<intmax_t>(fdin_size), errno, strerror(errno));
 #endif
   // If this point is reached, sendfile() actually is not available.  Copy file by hand.
   std::vector<unsigned char> buf(1024 * 1024 * 4);
@@ -419,14 +413,13 @@ static void smpi_init_privatization_dlopen(const std::string& executable)
     for (auto const& libname : privatize_libs) {
       // load the library once to add it to the local libs, to get the absolute path
       void* libhandle = dlopen(libname.c_str(), RTLD_LAZY);
-      xbt_assert(libhandle != nullptr, 
-		      "Cannot dlopen %s - check your settings in smpi/privatize-libs", libname.c_str());
+      xbt_assert(libhandle != nullptr, "Cannot dlopen %s - check your settings in smpi/privatize-libs",
+                 libname.c_str());
       // get library name from path
       std::string fullpath = libname;
 #if not defined(__APPLE__) && not defined(__HAIKU__)
-      XBT_ATTRIB_UNUSED int dl_iterate_res = dl_iterate_phdr(visit_libs, &fullpath);
-      xbt_assert(dl_iterate_res != 0, "Can't find a linked %s - check your settings in smpi/privatize-libs",
-                 fullpath.c_str());
+      xbt_assert(dl_iterate_phdr(visit_libs, &fullpath) != 0,
+                 "Can't find a linked %s - check your settings in smpi/privatize-libs", fullpath.c_str());
       XBT_DEBUG("Extra lib to privatize '%s' found", fullpath.c_str());
 #else
       xbt_die("smpi/privatize-libs is not (yet) compatible with OSX nor with Haiku");
@@ -490,7 +483,7 @@ static void smpi_init_privatization_dlopen(const std::string& executable)
                  dlerror(), saved_errno, strerror(saved_errno));
 
       smpi_entry_point_type entry_point = smpi_resolve_function(handle);
-      xbt_assert(entry_point, "Could not resolve entry point");
+      xbt_assert(entry_point, "Could not resolve entry point. Does your program contain a main() function?");
       smpi_run_entry_point(entry_point, executable, args);
     });
   });
@@ -513,8 +506,16 @@ static void smpi_init_privatization_no_dlopen(const std::string& executable)
 
   // Execute the same entry point for each simulated process:
   simgrid::s4u::Engine::get_instance()->register_default([entry_point, executable](std::vector<std::string> args) {
-    return std::function<void()>(
-        [entry_point, executable, args] { smpi_run_entry_point(entry_point, executable, args); });
+    return std::function<void()>([entry_point, executable, args] {
+      if (smpi_cfg_privatization() == SmpiPrivStrategies::MMAP) {
+        simgrid::smpi::ActorExt* ext = smpi_process();
+        /* Now using the segment index of this process  */
+        ext->set_privatized_region(smpi_init_global_memory_segment_process());
+        /* Done at the process's creation */
+        smpi_switch_data_segment(simgrid::s4u::Actor::self());
+      }
+      smpi_run_entry_point(entry_point, executable, args);
+    });
   });
 }
 
@@ -525,9 +526,8 @@ int smpi_main(const char* executable, int argc, char* argv[])
      * configuration tools */
     return 0;
   }
-  
-  SMPI_switch_data_segment = &smpi_switch_data_segment;
-  smpi_init_options();
+
+  smpi_init_options(true);
   simgrid::instr::init();
   SIMIX_global_init(&argc, argv);
 
@@ -566,7 +566,7 @@ int smpi_main(const char* executable, int argc, char* argv[])
   if (MC_is_active()) {
     MC_run();
   } else {
-    SIMIX_run();
+    simgrid::kernel::EngineImpl::get_instance()->run();
 
     xbt_os_walltimer_stop(global_timer);
     simgrid::smpi::utils::print_time_analysis(xbt_os_timer_elapsed(global_timer));
@@ -625,4 +625,5 @@ void smpi_mpi_init() {
 
 void SMPI_thread_create() {
   TRACE_smpi_init(simgrid::s4u::this_actor::get_pid(), __func__);
+  smpi_process()->mark_as_initialized();
 }

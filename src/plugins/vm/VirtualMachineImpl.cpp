@@ -15,7 +15,7 @@
 #include "src/surf/cpu_cas01.hpp"
 #include "src/surf/cpu_ti.hpp"
 
-XBT_LOG_NEW_DEFAULT_SUBCATEGORY(res_vm, ker_resource, "Virtual Machines, containing actors and mobile accross hosts");
+XBT_LOG_NEW_DEFAULT_SUBCATEGORY(res_vm, ker_resource, "Virtual Machines, containing actors and mobile across hosts");
 
 void surf_vm_model_init_HL13(simgrid::kernel::resource::CpuModel* cpu_pm_model)
 {
@@ -74,7 +74,7 @@ static void add_active_exec(s4u::Exec const& task)
 {
   const s4u::VirtualMachine* vm = dynamic_cast<s4u::VirtualMachine*>(task.get_host());
   if (vm != nullptr) {
-    VirtualMachineImpl* vm_impl = vm->get_impl();
+    VirtualMachineImpl* vm_impl = vm->get_vm_impl();
     vm_impl->add_active_exec();
     vm_impl->update_action_weight();
   }
@@ -84,7 +84,7 @@ static void remove_active_exec(s4u::Exec const& task)
 {
   const s4u::VirtualMachine* vm = dynamic_cast<s4u::VirtualMachine*>(task.get_host());
   if (vm != nullptr) {
-    VirtualMachineImpl* vm_impl = vm->get_impl();
+    VirtualMachineImpl* vm_impl = vm->get_vm_impl();
     vm_impl->remove_active_exec();
     vm_impl->update_action_weight();
   }
@@ -100,7 +100,7 @@ static void add_active_activity(kernel::activity::ActivityImpl const& act)
 {
   const s4u::VirtualMachine* vm = get_vm_from_activity(act);
   if (vm != nullptr) {
-    VirtualMachineImpl* vm_impl = vm->get_impl();
+    VirtualMachineImpl* vm_impl = vm->get_vm_impl();
     vm_impl->add_active_exec();
     vm_impl->update_action_weight();
   }
@@ -110,7 +110,7 @@ static void remove_active_activity(kernel::activity::ActivityImpl const& act)
 {
   const s4u::VirtualMachine* vm = get_vm_from_activity(act);
   if (vm != nullptr) {
-    VirtualMachineImpl* vm_impl = vm->get_impl();
+    VirtualMachineImpl* vm_impl = vm->get_vm_impl();
     vm_impl->remove_active_exec();
     vm_impl->update_action_weight();
   }
@@ -153,13 +153,13 @@ double VMModel::next_occurring_event(double now)
 
   /* iterate for all virtual machines */
   for (s4u::VirtualMachine* const& ws_vm : VirtualMachineImpl::allVms_) {
-    if (ws_vm->get_state() == s4u::VirtualMachine::state::SUSPENDED) // Ignore suspended VMs
+    if (ws_vm->get_state() == s4u::VirtualMachine::State::SUSPENDED) // Ignore suspended VMs
       continue;
 
-    const kernel::resource::Cpu* cpu = ws_vm->pimpl_cpu;
+    const kernel::resource::CpuImpl* cpu = ws_vm->pimpl_cpu;
 
     // solved_value below is X1 in comment above: what this VM got in the sharing on the PM
-    double solved_value = ws_vm->get_impl()->get_action()->get_variable()->get_value();
+    double solved_value = ws_vm->get_vm_impl()->get_action()->get_variable()->get_value();
     XBT_DEBUG("assign %f to vm %s @ pm %s", solved_value, ws_vm->get_cname(), ws_vm->get_pm()->get_cname());
 
     kernel::lmm::System* vcpu_system = cpu->get_model()->get_maxmin_system();
@@ -173,13 +173,12 @@ double VMModel::next_occurring_event(double now)
  * Resource *
  ************/
 
-VirtualMachineImpl::VirtualMachineImpl(simgrid::s4u::VirtualMachine* piface, simgrid::s4u::Host* host_PM,
-                                       int core_amount, size_t ramsize)
-    : HostImpl(piface), physical_host_(host_PM), core_amount_(core_amount), ramsize_(ramsize)
+VirtualMachineImpl::VirtualMachineImpl(const std::string& name, s4u::VirtualMachine* piface,
+                                       simgrid::s4u::Host* host_PM, int core_amount, size_t ramsize)
+    : HostImpl(name, piface), piface_(piface), physical_host_(host_PM), core_amount_(core_amount), ramsize_(ramsize)
 {
   /* Register this VM to the list of all VMs */
   allVms_.push_back(piface);
-
   /* We create cpu_action corresponding to a VM process on the host operating system. */
   /* TODO: we have to periodically input GUESTOS_NOISE to the system? how ?
    * The value for GUESTOS_NOISE corresponds to the cost of the global action associated to the VM.  It corresponds to
@@ -190,7 +189,7 @@ VirtualMachineImpl::VirtualMachineImpl(simgrid::s4u::VirtualMachine* piface, sim
   // It's empty for now, so it should not request resources in the PM
   update_action_weight();
 
-  XBT_VERB("Create VM(%s)@PM(%s)", piface->get_cname(), physical_host_->get_cname());
+  XBT_VERB("Create VM(%s)@PM(%s)", name.c_str(), physical_host_->get_cname());
   on_creation(*this);
 }
 
@@ -210,7 +209,7 @@ VirtualMachineImpl::~VirtualMachineImpl()
 
 void VirtualMachineImpl::suspend(smx_actor_t issuer)
 {
-  if (get_state() != s4u::VirtualMachine::state::RUNNING)
+  if (get_state() != s4u::VirtualMachine::State::RUNNING)
     throw VmFailureException(XBT_THROW_POINT,
                              xbt::string_printf("Cannot suspend VM %s: it is not running.", piface_->get_cname()));
   if (issuer->get_host() == piface_)
@@ -228,12 +227,12 @@ void VirtualMachineImpl::suspend(smx_actor_t issuer)
 
   XBT_DEBUG("suspend all actors on the VM done done");
 
-  vm_state_ = s4u::VirtualMachine::state::SUSPENDED;
+  vm_state_ = s4u::VirtualMachine::State::SUSPENDED;
 }
 
 void VirtualMachineImpl::resume()
 {
-  if (get_state() != s4u::VirtualMachine::state::SUSPENDED)
+  if (get_state() != s4u::VirtualMachine::State::SUSPENDED)
     throw VmFailureException(XBT_THROW_POINT,
                              xbt::string_printf("Cannot resume VM %s: it was not suspended", piface_->get_cname()));
 
@@ -246,7 +245,7 @@ void VirtualMachineImpl::resume()
     actor.resume();
   });
 
-  vm_state_ = s4u::VirtualMachine::state::RUNNING;
+  vm_state_ = s4u::VirtualMachine::State::RUNNING;
 }
 
 /** @brief Power off a VM.
@@ -258,23 +257,9 @@ void VirtualMachineImpl::resume()
  */
 void VirtualMachineImpl::shutdown(smx_actor_t issuer)
 {
-  if (get_state() != s4u::VirtualMachine::state::RUNNING) {
-    const char* stateName;
-    switch (get_state()) {
-      case s4u::VirtualMachine::state::CREATED:
-        stateName = "created, but not yet started";
-        break;
-      case s4u::VirtualMachine::state::SUSPENDED:
-        stateName = "suspended";
-        break;
-      case s4u::VirtualMachine::state::DESTROYED:
-        stateName = "destroyed";
-        break;
-      default: /* SURF_VM_STATE_RUNNING or unexpected values */
-        THROW_IMPOSSIBLE;
-    }
-    XBT_VERB("Shutting down the VM %s even if it's not running but %s", piface_->get_cname(), stateName);
-  }
+  if (get_state() != s4u::VirtualMachine::State::RUNNING)
+    XBT_VERB("Shutting down the VM %s even if it's not running but in state %s", piface_->get_cname(),
+             s4u::VirtualMachine::to_c_str(get_state()));
 
   XBT_DEBUG("shutdown VM %s, that contains %zu actors", piface_->get_cname(), get_actor_count());
 
@@ -284,7 +269,7 @@ void VirtualMachineImpl::shutdown(smx_actor_t issuer)
     issuer->kill(&actor);
   });
 
-  set_state(s4u::VirtualMachine::state::DESTROYED);
+  set_state(s4u::VirtualMachine::State::DESTROYED);
 
   /* FIXME: we may have to do something at the surf layer, e.g., vcpu action */
 }

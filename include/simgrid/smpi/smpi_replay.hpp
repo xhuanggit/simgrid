@@ -97,10 +97,10 @@ public:
 class CollCommParser : public ActionArgParser {
 public:
   double size;
-  double comm_size;
   double comp_size;
   int send_size;
   int recv_size;
+  unsigned comm_size; // size of communicator
   int root               = 0;
   MPI_Datatype datatype1 = MPI_DEFAULT_TYPE;
   MPI_Datatype datatype2 = MPI_DEFAULT_TYPE;
@@ -205,8 +205,8 @@ public:
   }
 
   virtual void kernel(simgrid::xbt::ReplayAction& action) = 0;
-  unsigned char* send_buffer(int size) { return smpi_get_tmp_sendbuffer(size); }
-  unsigned char* recv_buffer(int size) { return smpi_get_tmp_recvbuffer(size); }
+  unsigned char* send_buffer(size_t size) { return smpi_get_tmp_sendbuffer(size); }
+  unsigned char* recv_buffer(size_t size) { return smpi_get_tmp_recvbuffer(size); }
 };
 
 class WaitAction : public ReplayAction<WaitTestParser> {

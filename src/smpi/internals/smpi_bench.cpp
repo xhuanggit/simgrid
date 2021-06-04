@@ -7,6 +7,7 @@
 #include "private.hpp"
 #include "simgrid/host.h"
 #include "simgrid/modelchecker.h"
+#include "simgrid/s4u/Engine.hpp"
 #include "simgrid/s4u/Exec.hpp"
 #include "smpi_comm.hpp"
 #include "smpi_utils.hpp"
@@ -65,23 +66,19 @@ void smpi_execute(double duration)
 
 void smpi_execute_benched(double duration)
 {
-  smpi_bench_end();
+  const SmpiBenchGuard suspend_bench;
   double speed = sg_host_get_speed(sg_host_self());
   smpi_execute_flops(duration*speed);
-  smpi_bench_begin();
 }
 
 void smpi_execute_flops_benched(double flops) {
-  smpi_bench_end();
+  const SmpiBenchGuard suspend_bench;
   smpi_execute_flops(flops);
-  smpi_bench_begin();
 }
 
 void smpi_bench_begin()
 {
-  if (smpi_cfg_privatization() == SmpiPrivStrategies::MMAP) {
-    smpi_switch_data_segment(simgrid::s4u::Actor::self());
-  }
+  smpi_switch_data_segment(simgrid::s4u::Actor::self());
 
   if (MC_is_active() || MC_record_replay_is_active())
     return;
@@ -90,9 +87,9 @@ void smpi_bench_begin()
   if (not smpi_cfg_papi_events_file().empty()) {
     int event_set = smpi_process()->papi_event_set();
     // PAPI_start sets everything to 0! See man(3) PAPI_start
-    if (PAPI_LOW_LEVEL_INITED == PAPI_is_initialized() && event_set && PAPI_start(event_set) != PAPI_OK) {
-      xbt_die("Could not start PAPI counters (TODO: this needs some proper handling).");
-    }
+    if (PAPI_LOW_LEVEL_INITED == PAPI_is_initialized() && event_set)
+      xbt_assert(PAPI_start(event_set) == PAPI_OK,
+                 "Could not start PAPI counters (TODO: this needs some proper handling).");
   }
 #endif
   xbt_os_threadtimer_start(smpi_process()->timer());
@@ -129,8 +126,8 @@ void smpi_bench_end()
     int event_set                       = smpi_process()->papi_event_set();
     std::vector<long long> event_values(counter_data.size());
 
-    if (event_set && PAPI_stop(event_set, &event_values[0]) != PAPI_OK) // Error
-      xbt_die("Could not stop PAPI counters.");
+    if (event_set)
+      xbt_assert(PAPI_stop(event_set, &event_values[0]) == PAPI_OK, "Could not stop PAPI counters.");
     for (unsigned int i = 0; i < counter_data.size(); i++)
       counter_data[i].second += event_values[i];
   }
@@ -156,7 +153,7 @@ void smpi_bench_end()
     const papi_counter_t& counter_data = smpi_process()->papi_counters();
 
     for (auto const& pair : counter_data) {
-      container->get_variable(pair.first)->set_event(SIMIX_get_clock(), pair.second);
+      container->get_variable(pair.first)->set_event(simgrid::s4u::Engine::get_clock(), pair.second);
     }
   }
 #endif
@@ -167,17 +164,16 @@ void smpi_bench_end()
 /* Private sleep function used by smpi_sleep(), smpi_usleep() and friends */
 static unsigned int private_sleep(double secs)
 {
-  smpi_bench_end();
+  const SmpiBenchGuard suspend_bench;
 
   XBT_DEBUG("Sleep for: %lf secs", secs);
-  int rank = simgrid::s4u::this_actor::get_pid();
-  TRACE_smpi_sleeping_in(rank, secs);
+  aid_t pid = simgrid::s4u::this_actor::get_pid();
+  TRACE_smpi_sleeping_in(pid, secs);
 
   simgrid::s4u::this_actor::sleep_for(secs);
 
-  TRACE_smpi_sleeping_out(rank);
+  TRACE_smpi_sleeping_out(pid);
 
-  smpi_bench_begin();
   return 0;
 }
 
@@ -209,8 +205,8 @@ int smpi_gettimeofday(struct timeval* tv, struct timezone* tz)
   if (not smpi_process()->initialized() || smpi_process()->finalized() || smpi_process()->sampling())
     return gettimeofday(tv, tz);
 
-  smpi_bench_end();
-  double now = SIMIX_get_clock();
+  const SmpiBenchGuard suspend_bench;
+  double now = simgrid::s4u::Engine::get_clock();
   if (tv) {
     tv->tv_sec = static_cast<time_t>(now);
 #ifdef WIN32
@@ -221,7 +217,6 @@ int smpi_gettimeofday(struct timeval* tv, struct timezone* tz)
   }
   if (smpi_wtime_sleep > 0)
     simgrid::s4u::this_actor::sleep_for(smpi_wtime_sleep);
-  smpi_bench_begin();
   return 0;
 }
 
@@ -235,13 +230,12 @@ int smpi_clock_gettime(clockid_t clk_id, struct timespec* tp)
   if (not smpi_process()->initialized() || smpi_process()->finalized() || smpi_process()->sampling())
     return clock_gettime(clk_id, tp);
   //there is only one time in SMPI, so clk_id is ignored.
-  smpi_bench_end();
-  double now = SIMIX_get_clock();
+  const SmpiBenchGuard suspend_bench;
+  double now  = simgrid::s4u::Engine::get_clock();
   tp->tv_sec  = static_cast<time_t>(now);
   tp->tv_nsec = static_cast<long int>((now - tp->tv_sec) * 1e9);
   if (smpi_wtime_sleep > 0)
     simgrid::s4u::this_actor::sleep_for(smpi_wtime_sleep);
-  smpi_bench_begin();
   return 0;
 }
 #endif
@@ -250,13 +244,12 @@ double smpi_mpi_wtime()
 {
   double time;
   if (smpi_process()->initialized() && not smpi_process()->finalized() && not smpi_process()->sampling()) {
-    smpi_bench_end();
-    time = SIMIX_get_clock();
+    const SmpiBenchGuard suspend_bench;
+    time = simgrid::s4u::Engine::get_clock();
     if (smpi_wtime_sleep > 0)
       simgrid::s4u::this_actor::sleep_for(smpi_wtime_sleep);
-    smpi_bench_begin();
   } else {
-    time = SIMIX_get_clock();
+    time = simgrid::s4u::Engine::get_clock();
   }
   return time;
 }
@@ -264,20 +257,18 @@ double smpi_mpi_wtime()
 extern double sg_surf_precision;
 unsigned long long smpi_rastro_resolution ()
 {
-  smpi_bench_end();
+  const SmpiBenchGuard suspend_bench;
   double resolution = (1/sg_surf_precision);
-  smpi_bench_begin();
   return static_cast<unsigned long long>(resolution);
 }
 
 unsigned long long smpi_rastro_timestamp ()
 {
-  smpi_bench_end();
-  double now = SIMIX_get_clock();
+  const SmpiBenchGuard suspend_bench;
+  double now = simgrid::s4u::Engine::get_clock();
 
   auto sec               = static_cast<unsigned long long>(now);
   unsigned long long pre = (now - sec) * smpi_rastro_resolution();
-  smpi_bench_begin();
   return sec * smpi_rastro_resolution() + pre;
 }
 
@@ -364,8 +355,8 @@ int smpi_sample_2(int global, const char *file, int line, int iter_count)
 
   XBT_DEBUG("sample2 %s %d", loc.c_str(), iter_count);
   auto sample = samples.find(loc);
-  if (sample == samples.end())
-    xbt_die("Y U NO use SMPI_SAMPLE_* macros? Stop messing directly with smpi_sample_* functions!");
+  xbt_assert(sample != samples.end(),
+             "Y U NO use SMPI_SAMPLE_* macros? Stop messing directly with smpi_sample_* functions!");
   const LocalData& data = sample->second;
 
   if (data.benching) {
@@ -400,8 +391,8 @@ void smpi_sample_3(int global, const char *file, int line)
 
   XBT_DEBUG("sample3 %s", loc.c_str());
   auto sample = samples.find(loc);
-  if (sample == samples.end())
-    xbt_die("Y U NO use SMPI_SAMPLE_* macros? Stop messing directly with smpi_sample_* functions!");
+  xbt_assert(sample != samples.end(),
+             "Y U NO use SMPI_SAMPLE_* macros? Stop messing directly with smpi_sample_* functions!");
   LocalData& data = sample->second;
 
   if (not data.benching)
@@ -432,9 +423,9 @@ int smpi_sample_exit(int global, const char *file, int line, int iter_count){
 
     XBT_DEBUG("sample exit %s", loc.c_str());
     auto sample = samples.find(loc);
-    if (sample == samples.end())
-      xbt_die("Y U NO use SMPI_SAMPLE_* macros? Stop messing directly with smpi_sample_* functions!");
-  
+    xbt_assert(sample != samples.end(),
+               "Y U NO use SMPI_SAMPLE_* macros? Stop messing directly with smpi_sample_* functions!");
+
     if (smpi_process()->sampling()){//end of loop, but still sampling needed
       const LocalData& data = sample->second;
       smpi_process()->set_sampling(0);

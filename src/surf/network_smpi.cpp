@@ -43,11 +43,27 @@ namespace simgrid {
 namespace kernel {
 namespace resource {
 
+void NetworkSmpiModel::check_lat_factor_cb()
+{
+  if (not simgrid::config::is_default("smpi/lat-factor")) {
+    throw std::invalid_argument(
+        "NetworkModelIntf: Cannot mix network/latency-factor and callback configuration. Choose only one of them.");
+  }
+}
+
+void NetworkSmpiModel::check_bw_factor_cb()
+{
+  if (not simgrid::config::is_default("smpi/bw-factor")) {
+    throw std::invalid_argument(
+        "NetworkModelIntf: Cannot mix network/bandwidth-factor and callback configuration. Choose only one of them.");
+  }
+}
+
 double NetworkSmpiModel::get_bandwidth_factor(double size)
 {
   static std::vector<s_smpi_factor_t> smpi_bw_factor;
   if (smpi_bw_factor.empty())
-    smpi_bw_factor = simgrid::smpi::utils::parse_factor(config::get_value<std::string>("smpi/bw-factor"));
+    smpi_bw_factor = smpi::utils::parse_factor(config::get_value<std::string>("smpi/bw-factor"));
 
   double current = 1.0;
   for (auto const& fact : smpi_bw_factor) {
@@ -66,7 +82,7 @@ double NetworkSmpiModel::get_latency_factor(double size)
 {
   static std::vector<s_smpi_factor_t> smpi_lat_factor;
   if (smpi_lat_factor.empty())
-    smpi_lat_factor = simgrid::smpi::utils::parse_factor(config::get_value<std::string>("smpi/lat-factor"));
+    smpi_lat_factor = smpi::utils::parse_factor(config::get_value<std::string>("smpi/lat-factor"));
 
   double current = 1.0;
   for (auto const& fact : smpi_lat_factor) {
@@ -79,11 +95,6 @@ double NetworkSmpiModel::get_latency_factor(double size)
   XBT_DEBUG("%f > %zu return %f", size, smpi_lat_factor.back().factor, current);
 
   return current;
-}
-
-double NetworkSmpiModel::get_bandwidth_constraint(double rate, double bound, double size)
-{
-  return rate < 0 ? bound : std::min(bound, rate * get_bandwidth_factor(size));
 }
 } // namespace resource
 } // namespace kernel

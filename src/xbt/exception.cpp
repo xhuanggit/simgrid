@@ -11,6 +11,7 @@
 #include <boost/core/demangle.hpp>
 #include <mutex>
 #include <sstream>
+#include <typeinfo>
 
 XBT_LOG_EXTERNAL_CATEGORY(xbt);
 XBT_LOG_NEW_DEFAULT_SUBCATEGORY(xbt_exception, xbt, "Exceptions");
@@ -78,7 +79,7 @@ static void show_backtrace(const simgrid::xbt::Backtrace& bt)
 
 static std::terminate_handler previous_terminate_handler = nullptr;
 
-static void handler()
+XBT_ATTRIB_NORETURN static void handler()
 {
   // Avoid doing crazy things if we get an uncaught exception inside an uncaught exception
   static std::atomic_flag lock = ATOMIC_FLAG_INIT;
@@ -103,28 +104,24 @@ static void handler()
   // We manage C++ exception ourselves
   catch (const std::exception& e) {
     log_exception(xbt_log_priority_critical, "Uncaught exception", e);
-    show_backtrace(bt);
-    std::abort();
   }
 
   catch (const simgrid::ForcefulKillException&) {
     XBT_ERROR("Received a ForcefulKillException at the top-level exception handler. Maybe a Java->C++ call that is not "
               "protected in a try/catch?");
-    show_backtrace(bt);
   }
 
   // We don't know how to manage other exceptions
   catch (...) {
     // If there was another handler let's delegate to it
-    if (previous_terminate_handler)
+    if (previous_terminate_handler) {
       previous_terminate_handler();
-    else {
-      XBT_ERROR("Unknown uncaught exception");
-      show_backtrace(bt);
-      std::abort();
+      XBT_ERROR("Unexpected return from delegated terminate handler");
     }
+    XBT_ERROR("Unknown uncaught exception");
   }
-  XBT_INFO("BAM");
+  show_backtrace(bt);
+  std::abort();
 }
 
 void install_exception_handler()

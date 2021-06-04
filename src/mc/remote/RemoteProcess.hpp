@@ -12,8 +12,10 @@
 #include "src/mc/AddressSpace.hpp"
 #include "src/mc/inspect/ObjectInformation.hpp"
 #include "src/mc/remote/RemotePtr.hpp"
+#include "src/xbt/memory_map.hpp"
 #include "src/xbt/mmalloc/mmprivate.h"
 
+#include <libunwind.h>
 #include <vector>
 
 namespace simgrid {
@@ -27,7 +29,7 @@ public:
 
   /** Hostname (owned by `mc_model_checker->hostnames_`) */
   const xbt::string* hostname = nullptr;
-  std::string name;
+  xbt::string name;
 
   void clear()
   {
@@ -75,7 +77,7 @@ private:
 public:
   explicit RemoteProcess(pid_t pid);
   ~RemoteProcess() override;
-  void init(void* mmalloc_default_mdp, void* maxpid, void* actors, void* dead_actors);
+  void init(xbt_mheap_t mmalloc_default_mdp, unsigned long* maxpid, xbt_dynar_t actors, xbt_dynar_t dead_actors);
 
   RemoteProcess(RemoteProcess const&) = delete;
   RemoteProcess(RemoteProcess&&)      = delete;
@@ -166,9 +168,9 @@ public:
   /* ***************** */
 private:
   // Cache the address of the variables we read directly in the memory of remote
-  void* maxpid_addr_;
-  void* actors_addr_;
-  void* dead_actors_addr_;
+  RemotePtr<unsigned long> maxpid_addr_;
+  RemotePtr<s_xbt_dynar_t> actors_addr_;
+  RemotePtr<s_xbt_dynar_t> dead_actors_addr_;
 
 public:
   std::vector<ActorInformation>& actors();
@@ -200,8 +202,7 @@ public:
       return nullptr;
   }
 
-  unsigned long get_maxpid() const;
-  void get_actor_vectors(RemotePtr<s_xbt_dynar_t>& actors, RemotePtr<s_xbt_dynar_t>& dead_actors);
+  unsigned long get_maxpid() const { return this->read(maxpid_addr_); }
 
   void dump_stack() const;
 
@@ -221,32 +222,30 @@ private:
   std::vector<s_stack_region_t> stack_areas_;
   std::vector<IgnoredHeapRegion> ignored_heap_;
 
+  // Copies of MCed SMX data structures
+  /** Copy of `EngineImpl::actor_list_`
+   *
+   *  See mc_smx.cpp.
+   */
+  std::vector<ActorInformation> smx_actors_infos;
+
+  /** Copy of `EngineImpl::actors_to_destroy_`
+   *
+   *  See mc_smx.cpp.
+   */
+  std::vector<ActorInformation> smx_dead_actors_infos;
+
+  /** State of the cache (which variables are up to date) */
+  int cache_flags_ = RemoteProcess::cache_none;
+
 public:
   // object info
   // TODO, make private (first, objectify simgrid::mc::ObjectInformation*)
   std::vector<std::shared_ptr<ObjectInformation>> object_infos;
   std::shared_ptr<ObjectInformation> binary_info;
 
-  // Copies of MCed SMX data structures
-  /** Copy of `simix_global->process_list`
-   *
-   *  See mc_smx.c.
-   */
-  std::vector<ActorInformation> smx_actors_infos;
-
-  /** Copy of `simix_global->actors_to_destroy`
-   *
-   *  See mc_smx.c.
-   */
-  std::vector<ActorInformation> smx_dead_actors_infos;
-
-private:
-  /** State of the cache (which variables are up to date) */
-  int cache_flags_ = RemoteProcess::cache_none;
-
-public:
   /** Address of the heap structure in the MCed process. */
-  void* heap_address;
+  RemotePtr<s_xbt_mheap_t> heap_address;
 
   /** Copy of the heap structure of the process
    *

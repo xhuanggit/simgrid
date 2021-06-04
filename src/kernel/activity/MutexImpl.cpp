@@ -10,7 +10,7 @@
 #include "simgrid/modelchecker.h"
 #include "src/mc/mc_safety.hpp"
 #define MC_CHECK_NO_DPOR()                                                                                             \
-  xbt_assert(not MC_is_active() || simgrid::mc::reduction_mode != simgrid::mc::ReductionMode::dpor,                    \
+  xbt_assert(not MC_is_active() || mc::reduction_mode != mc::ReductionMode::dpor,                                      \
              "Mutex is currently not supported with DPOR,  use --cfg=model-check/reduction:none")
 #else
 #define MC_CHECK_NO_DPOR() (void)0
@@ -26,13 +26,11 @@ void MutexImpl::lock(actor::ActorImpl* issuer)
 {
   XBT_IN("(%p; %p)", this, issuer);
   MC_CHECK_NO_DPOR();
-  /* FIXME: check where to validate the arguments */
-  RawImplPtr synchro = nullptr;
 
   if (locked_) {
     /* FIXME: check if the host is active ? */
     /* Somebody using the mutex, use a synchronization to get host failures */
-    synchro = RawImplPtr(new RawImpl([this, issuer]() { this->remove_sleeping_actor(*issuer); }));
+    RawImplPtr synchro(new RawImpl([this, issuer]() { this->remove_sleeping_actor(*issuer); }));
     (*synchro).set_host(issuer->get_host()).start();
     synchro->register_simcall(&issuer->simcall_);
     sleeping_.push_back(*issuer);
@@ -45,9 +43,9 @@ void MutexImpl::lock(actor::ActorImpl* issuer)
   XBT_OUT();
 }
 
-/** Tries to lock the mutex for a process
+/** Tries to lock the mutex for a actor
  *
- * @param  issuer  the process that tries to acquire the mutex
+ * @param  issuer  the actor that tries to acquire the mutex
  * @return whether we managed to lock the mutex
  */
 bool MutexImpl::try_lock(actor::ActorImpl* issuer)
@@ -65,11 +63,11 @@ bool MutexImpl::try_lock(actor::ActorImpl* issuer)
   return true;
 }
 
-/** Unlock a mutex for a process
+/** Unlock a mutex for a actor
  *
- * Unlocks the mutex and gives it to a process waiting for it.
+ * Unlocks the mutex and gives it to a actor waiting for it.
  * If the unlocker is not the owner of the mutex nothing happens.
- * If there are no process waiting, it sets the mutex as free.
+ * If there are no actor waiting, it sets the mutex as free.
  */
 void MutexImpl::unlock(actor::ActorImpl* issuer)
 {

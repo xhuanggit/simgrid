@@ -79,7 +79,7 @@ int console_close(lua_State*)
 }
 
 int console_add_backbone(lua_State *L) {
-  simgrid::kernel::routing::LinkCreationArgs link;
+  auto link = std::make_unique<simgrid::kernel::routing::LinkCreationArgs>();
   lua_Debug ar;
   lua_getstack(L, 1, &ar);
   lua_getinfo(L, "Sl", &ar);
@@ -89,33 +89,32 @@ int console_add_backbone(lua_State *L) {
   lua_pushstring(L, "id");
   int type = lua_gettable(L, -2);
   lua_ensure(type == LUA_TSTRING, "Attribute 'id' must be specified for backbone and must be a string.");
-  link.id = lua_tostring(L, -1);
+  link->id = lua_tostring(L, -1);
   lua_pop(L, 1);
 
   lua_pushstring(L, "bandwidth");
   type = lua_gettable(L, -2);
   lua_ensure(type == LUA_TSTRING || type == LUA_TNUMBER,
       "Attribute 'bandwidth' must be specified for backbone and must either be a string (in the right format; see docs) or a number.");
-  link.bandwidths.push_back(xbt_parse_get_bandwidth(ar.short_src, ar.currentline, lua_tostring(L, -1),
-                                                    "bandwidth of backbone", link.id.c_str()));
+  link->bandwidths.push_back(
+      xbt_parse_get_bandwidth(ar.short_src, ar.currentline, lua_tostring(L, -1), "bandwidth of backbone " + link->id));
   lua_pop(L, 1);
 
   lua_pushstring(L, "lat");
   type = lua_gettable(L, -2);
   lua_ensure(type == LUA_TSTRING || type == LUA_TNUMBER,
       "Attribute 'lat' must be specified for backbone and must either be a string (in the right format; see docs) or a number.");
-  link.latency =
-      xbt_parse_get_time(ar.short_src, ar.currentline, lua_tostring(L, -1), "latency of backbone", link.id.c_str());
+  link->latency =
+      xbt_parse_get_time(ar.short_src, ar.currentline, lua_tostring(L, -1), "latency of backbone " + link->id);
   lua_pop(L, 1);
 
   lua_pushstring(L, "sharing_policy");
   lua_gettable(L, -2);
   const char* policy = lua_tostring(L, -1);
   lua_pop(L, 1);
-  link.policy = link_policy_get_by_name(policy);
+  link->policy = link_policy_get_by_name(policy);
 
-  sg_platf_new_link(&link);
-  routing_cluster_add_backbone(simgrid::s4u::Link::by_name(link.id)->get_impl());
+  routing_cluster_add_backbone(std::move(link));
 
   return 0;
 }
@@ -180,7 +179,7 @@ int console_add_host(lua_State *L) {
     host.speed_per_pstate.push_back(lua_tonumber(L, -1));
   else // LUA_TSTRING
     host.speed_per_pstate.push_back(
-        xbt_parse_get_speed(ar.short_src, ar.currentline, lua_tostring(L, -1), "speed of host", host.id));
+        xbt_parse_get_speed(ar.short_src, ar.currentline, lua_tostring(L, -1), "speed of host " + host.id));
   lua_pop(L, 1);
 
   // get core
@@ -210,7 +209,8 @@ int console_add_host(lua_State *L) {
       host.state_trace = simgrid::kernel::profile::Profile::from_file(filename);
   lua_pop(L, 1);
 
-  sg_platf_new_host(&host);
+  sg_platf_new_host_begin(&host);
+  sg_platf_new_host_seal(0);
 
   return 0;
 }
@@ -241,8 +241,8 @@ int  console_add_link(lua_State *L) {
   if (type == LUA_TNUMBER)
     link.bandwidths.push_back(lua_tonumber(L, -1));
   else // LUA_TSTRING
-    link.bandwidths.push_back(xbt_parse_get_bandwidth(ar.short_src, ar.currentline, lua_tostring(L, -1),
-                                                      "bandwidth of link", link.id.c_str()));
+    link.bandwidths.push_back(
+        xbt_parse_get_bandwidth(ar.short_src, ar.currentline, lua_tostring(L, -1), "bandwidth of link " + link.id));
   lua_pop(L, 1);
 
   //get latency value
@@ -253,8 +253,7 @@ int  console_add_link(lua_State *L) {
   if (type == LUA_TNUMBER)
     link.latency = lua_tonumber(L, -1);
   else // LUA_TSTRING
-    link.latency =
-        xbt_parse_get_time(ar.short_src, ar.currentline, lua_tostring(L, -1), "latency of link", link.id.c_str());
+    link.latency = xbt_parse_get_time(ar.short_src, ar.currentline, lua_tostring(L, -1), "latency of link " + link.id);
   lua_pop(L, 1);
 
   /*Optional Arguments  */
@@ -311,7 +310,7 @@ int console_add_router(lua_State* L) {
   const char* coords = lua_tostring(L, -1);
   lua_pop(L,1);
 
-  sg_platf_new_router(name, coords);
+  sg_platf_new_router(name, coords ? coords : "");
 
   return 0;
 }

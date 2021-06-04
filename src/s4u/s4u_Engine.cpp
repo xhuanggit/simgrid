@@ -16,7 +16,7 @@
 #include "simgrid/simix.h"
 #include "src/instr/instr_private.hpp"
 #include "src/kernel/EngineImpl.hpp"
-#include "src/simix/smx_private.hpp" // For access to simix_global->process_list
+#include "src/mc/mc_replay.hpp"
 #include "src/surf/network_interface.hpp"
 #include "surf/surf.hpp" // routing_platf. FIXME:KILLME. SOON
 #include <simgrid/Exception.hpp>
@@ -37,13 +37,24 @@ xbt::signal<void(void)> Engine::on_deadlock;
 
 Engine* Engine::instance_ = nullptr; /* That singleton is awful, but I don't see no other solution right now. */
 
-Engine::Engine(int* argc, char** argv) : pimpl(new kernel::EngineImpl())
+void Engine::initialize(int* argc, char** argv)
 {
   xbt_assert(Engine::instance_ == nullptr, "It is currently forbidden to create more than one instance of s4u::Engine");
+  Engine::instance_ = this;
   instr::init();
   SIMIX_global_init(argc, argv);
+}
 
-  Engine::instance_ = this;
+Engine::Engine(std::string name) : pimpl(new kernel::EngineImpl())
+{
+  int argc   = 1;
+  char* argv = &name[0];
+  initialize(&argc, &argv);
+}
+
+Engine::Engine(int* argc, char** argv) : pimpl(new kernel::EngineImpl())
+{
+  initialize(argc, argv);
 }
 
 Engine::~Engine()
@@ -70,7 +81,11 @@ void Engine::shutdown()
 
 double Engine::get_clock()
 {
-  return SIMIX_get_clock();
+  if (MC_is_active() || MC_record_replay_is_active()) {
+    return MC_process_clock_get(SIMIX_process_self());
+  } else {
+    return surf_get_clock();
+  }
 }
 
 void Engine::add_model(std::shared_ptr<kernel::resource::Model> model,
@@ -232,6 +247,21 @@ Link* Engine::link_by_name_or_null(const std::string& name) const
   return link == pimpl->links_.end() ? nullptr : link->second->get_iface();
 }
 
+/** @brief Find a mailox from its name or create one if it does not exist) */
+Mailbox* Engine::mailbox_by_name_or_create(const std::string& name) const
+{
+  /* two actors may have pushed the same mbox_create simcall at the same time */
+  kernel::activity::MailboxImpl* mbox = kernel::actor::simcall([&name, this] {
+    auto m = pimpl->mailboxes_.emplace(name, nullptr);
+    if (m.second) {
+      m.first->second = new kernel::activity::MailboxImpl(name);
+      XBT_DEBUG("Creating a mailbox at %p with name %s", m.first->second, name.c_str());
+    }
+    return m.first->second;
+  });
+  return mbox->get_iface();
+}
+
 void Engine::link_register(const std::string& name, const Link* link)
 {
   pimpl->links_[name] = link->get_impl();
@@ -270,13 +300,13 @@ std::vector<Link*> Engine::get_filtered_links(const std::function<bool(Link*)>& 
 
 size_t Engine::get_actor_count() const
 {
-  return simix_global->process_list.size();
+  return pimpl->get_actor_count();
 }
 
 std::vector<ActorPtr> Engine::get_all_actors() const
 {
   std::vector<ActorPtr> actor_list;
-  for (auto const& kv : simix_global->process_list) {
+  for (auto const& kv : pimpl->get_actor_list()) {
     actor_list.push_back(kv.second->get_iface());
   }
   return actor_list;
@@ -285,7 +315,7 @@ std::vector<ActorPtr> Engine::get_all_actors() const
 std::vector<ActorPtr> Engine::get_filtered_actors(const std::function<bool(ActorPtr)>& filter) const
 {
   std::vector<ActorPtr> actor_list;
-  for (auto const& kv : simix_global->process_list) {
+  for (auto const& kv : pimpl->get_actor_list()) {
     if (filter(kv.second->get_iface()))
       actor_list.push_back(kv.second->get_iface());
   }
@@ -294,6 +324,12 @@ std::vector<ActorPtr> Engine::get_filtered_actors(const std::function<bool(Actor
 
 void Engine::run() const
 {
+  /* sealing resources before run: links */
+  for (auto* link : get_all_links())
+    link->seal();
+  /* seal netzone root, recursively seal children netzones, hosts and disks */
+  get_netzone_root()->seal();
+
   /* Clean IO before the run */
   fflush(stdout);
   fflush(stderr);
@@ -301,14 +337,16 @@ void Engine::run() const
   if (MC_is_active()) {
     MC_run();
   } else {
-    SIMIX_run();
+    pimpl->run();
   }
 }
 
 /** @brief Retrieve the root netzone, containing all others */
 s4u::NetZone* Engine::get_netzone_root() const
 {
-  return pimpl->netzone_root_->get_iface();
+  if (pimpl->netzone_root_)
+    return pimpl->netzone_root_->get_iface();
+  return nullptr;
 }
 /** @brief Set the root netzone, containing all others. Once set, it cannot be changed. */
 void Engine::set_netzone_root(const s4u::NetZone* netzone)
@@ -342,6 +380,15 @@ kernel::routing::NetPoint* Engine::netpoint_by_name_or_null(const std::string& n
 {
   auto netp = pimpl->netpoints_.find(name);
   return netp == pimpl->netpoints_.end() ? nullptr : netp->second;
+}
+
+kernel::routing::NetPoint* Engine::netpoint_by_name(const std::string& name) const
+{
+  auto netp = netpoint_by_name_or_null(name);
+  if (netp == nullptr) {
+    throw std::invalid_argument(std::string("Netpoint not found: %s") + name);
+  }
+  return netp;
 }
 
 std::vector<kernel::routing::NetPoint*> Engine::get_all_netpoints() const

@@ -6,7 +6,6 @@
 #include "simgrid/kernel/routing/WifiZone.hpp"
 #include "simgrid/kernel/routing/NetPoint.hpp"
 #include "src/surf/network_interface.hpp"
-#include "src/surf/xml/platf_private.hpp"
 #include "surf/surf.hpp"
 
 #include <unordered_set>
@@ -29,7 +28,7 @@ void WifiZone::do_seal()
   }
 }
 
-void WifiZone::get_local_route(NetPoint* src, NetPoint* dst, RouteCreationArgs* res, double* lat)
+void WifiZone::get_local_route(const NetPoint* src, const NetPoint* dst, Route* res, double* lat)
 {
   XBT_DEBUG("full getLocalRoute from %s[%u] to %s[%u]", src->get_cname(), src->id(), dst->get_cname(), dst->id());
 
@@ -39,31 +38,36 @@ void WifiZone::get_local_route(NetPoint* src, NetPoint* dst, RouteCreationArgs* 
 
     if (src != access_point_) {
       XBT_DEBUG("src %s is not our gateway", src->get_cname());
-      res->link_list.push_back(wifi_link_);
+      res->link_list_.push_back(wifi_link_);
       if (lat)
         *lat += wifi_link_->get_latency();
     }
     if (dst != access_point_) {
       XBT_DEBUG("dst %s is not our gateway", dst->get_cname());
-      res->link_list.push_back(wifi_link_);
+      res->link_list_.push_back(wifi_link_);
       if (lat)
         *lat += wifi_link_->get_latency();
     }
   }
 }
 
-s4u::Link* WifiZone::create_link(const std::string& name, const std::vector<double>& bandwidths,
-                                 s4u::Link::SharingPolicy policy)
+s4u::Link* WifiZone::create_link(const std::string& name, const std::vector<double>& bandwidths)
 {
   xbt_assert(wifi_link_ == nullptr,
              "WIFI netzone %s contains more than one link. Please only declare one, the wifi link.", get_cname());
-  xbt_assert(policy == s4u::Link::SharingPolicy::WIFI, "Link %s in WIFI zone %s must follow the WIFI sharing policy.",
-             name.c_str(), get_cname());
 
-  auto s4u_link = NetZoneImpl::create_link(name, bandwidths, policy);
-  wifi_link_    = s4u_link->get_impl();
-  return s4u_link;
+  wifi_link_ = get_network_model()->create_wifi_link(name, bandwidths);
+  wifi_link_->set_sharing_policy(s4u::Link::SharingPolicy::WIFI);
+  return wifi_link_->get_iface();
 }
 } // namespace routing
 } // namespace kernel
+
+namespace s4u {
+NetZone* create_wifi_zone(const std::string& name)
+{
+  return (new kernel::routing::WifiZone(name))->get_iface();
+}
+} // namespace s4u
+
 } // namespace simgrid

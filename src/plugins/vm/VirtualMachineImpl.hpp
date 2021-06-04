@@ -38,28 +38,32 @@ public:
 
   static std::deque<s4u::VirtualMachine*> allVms_;
 
-  explicit VirtualMachineImpl(s4u::VirtualMachine* piface, s4u::Host* host, int core_amount, size_t ramsize);
+  explicit VirtualMachineImpl(const std::string& name, s4u::VirtualMachine* piface, s4u::Host* host, int core_amount,
+                              size_t ramsize);
   ~VirtualMachineImpl() override;
 
-  virtual void suspend(kernel::actor::ActorImpl* issuer);
-  virtual void resume();
-  virtual void shutdown(kernel::actor::ActorImpl* issuer);
+  void suspend(kernel::actor::ActorImpl* issuer);
+  void resume();
+  void shutdown(kernel::actor::ActorImpl* issuer);
 
   /** @brief Change the physical host on which the given VM is running */
-  virtual void set_physical_host(s4u::Host* dest);
+  void set_physical_host(s4u::Host* dest);
   /** @brief Get the physical host on which the given VM is running */
   s4u::Host* get_physical_host() const { return physical_host_; }
 
   sg_size_t get_ramsize() const { return ramsize_; }
   void set_ramsize(sg_size_t ramsize) { ramsize_ = ramsize; }
 
-  s4u::VirtualMachine::state get_state() const { return vm_state_; }
-  void set_state(s4u::VirtualMachine::state state) { vm_state_ = state; }
+  s4u::VirtualMachine::State get_state() const { return vm_state_; }
+  void set_state(s4u::VirtualMachine::State state) { vm_state_ = state; }
 
   unsigned int get_core_amount() const { return core_amount_; }
   kernel::resource::Action* get_action() const { return action_; }
 
-  virtual void set_bound(double bound);
+  const s4u::VirtualMachine* get_iface() const override { return piface_; }
+  s4u::VirtualMachine* get_iface() override { return piface_; }
+
+  void set_bound(double bound);
 
   void update_action_weight();
 
@@ -71,13 +75,14 @@ public:
   bool is_migrating() const { return is_migrating_; }
 
 private:
+  s4u::VirtualMachine* piface_;
   kernel::resource::Action* action_ = nullptr;
   unsigned int active_execs_        = 0;
   s4u::Host* physical_host_;
   unsigned int core_amount_;
   double user_bound_                   = std::numeric_limits<double>::max();
   size_t ramsize_                      = 0;
-  s4u::VirtualMachine::state vm_state_ = s4u::VirtualMachine::state::CREATED;
+  s4u::VirtualMachine::State vm_state_ = s4u::VirtualMachine::State::CREATED;
   bool is_migrating_                   = false;
 };
 
@@ -100,7 +105,7 @@ public:
     return nullptr;
   };
 };
-}
-}
+} // namespace vm
+} // namespace simgrid
 
 #endif /* VM_INTERFACE_HPP_ */

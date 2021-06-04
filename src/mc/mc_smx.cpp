@@ -16,10 +16,10 @@ using simgrid::mc::remote;
  *  This is implemented by:
  *
  *   - `model_checker->process.smx_process_infos`
- *      (copy of `simix_global->process_list`);
+ *      (copy of `EngineImpl::actor_list_`);
  *
  *   - `model_checker->process.smx_old_process_infos`
- *      (copy of `simix_global->actors_to_destroy`);
+ *      (copy of `EngineImpl::actors_to_destroy_`);
  *
  *   - `model_checker->hostnames`.
  *
@@ -66,12 +66,8 @@ void RemoteProcess::refresh_simix()
   if (this->cache_flags_ & RemoteProcess::cache_simix_processes)
     return;
 
-  RemotePtr<s_xbt_dynar_t> actor_vector;
-  RemotePtr<s_xbt_dynar_t> dead_actor_vector;
-  get_actor_vectors(actor_vector, dead_actor_vector);
-
-  MC_process_refresh_simix_actor_dynar(this, this->smx_actors_infos, actor_vector);
-  MC_process_refresh_simix_actor_dynar(this, this->smx_dead_actors_infos, dead_actor_vector);
+  MC_process_refresh_simix_actor_dynar(this, this->smx_actors_infos, actors_addr_);
+  MC_process_refresh_simix_actor_dynar(this, this->smx_dead_actors_infos, dead_actors_addr_);
 
   this->cache_flags_ |= RemoteProcess::cache_simix_processes;
 }

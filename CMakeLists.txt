@@ -2,7 +2,7 @@
 
 set(SIMGRID_VERSION_MAJOR "3")
 set(SIMGRID_VERSION_MINOR "27")
-set(SIMGRID_VERSION_PATCH "0") # odd => git branch; even => stable release or released snapshot
+set(SIMGRID_VERSION_PATCH "1") # odd => git branch; even => stable release or released snapshot
 
 if(${SIMGRID_VERSION_PATCH} EQUAL "0")
   set(release_version "${SIMGRID_VERSION_MAJOR}.${SIMGRID_VERSION_MINOR}")
@@ -30,12 +30,6 @@ project(simgrid C CXX)
 
 # customizable installation directories
 include(GNUInstallDirs)
-
-## Save compiler flags preset with environment variables CFLAGS or CXXFLAGS;
-## they will used within smpicc, smpicxx.
-## Do it early so that we get their genuine values. The same will be done later for Fortran.
-string(REGEX REPLACE " *-f[a-z]+-prefix-map=[^ ]*" "" SMPI_C_FLAGS "${CMAKE_C_FLAGS}")
-string(REGEX REPLACE " *-f[a-z]+-prefix-map=[^ ]*" "" SMPI_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 
 #-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#-#
 #     Check for the compiler        #
@@ -94,19 +88,19 @@ if ((NOT DEFINED enable_smpi) OR enable_smpi)
 
 	# Set flags/libs to be used in smpiff
     if(CMAKE_Fortran_COMPILER_ID MATCHES "GNU")
-      set(SMPI_Fortran_FLAGS "\"-fpic\" \"-ff2c\" \"-fno-second-underscore\"")
+      set(SMPI_Fortran_FLAGS_ "\"-fpic\" \"-ff2c\" \"-fno-second-underscore\"")
       set(SMPI_Fortran_LIBS "\"-lgfortran\"")
       set(SMPI_GFORTRAN 1)
     elseif(CMAKE_Fortran_COMPILER_ID MATCHES "Intel")
-      set(SMPI_Fortran_FLAGS "\"-fPIC\" \"-nofor-main\"")
+      set(SMPI_Fortran_FLAGS_ "\"-fPIC\" \"-nofor-main\"")
       set(SMPI_Fortran_LIBS "\"-lifcore\"")
       set(SMPI_IFORT 1)
     elseif(CMAKE_Fortran_COMPILER_ID MATCHES "PGI|Flang") # flang
-      set(SMPI_Fortran_FLAGS "\"-fPIC\"")
+      set(SMPI_Fortran_FLAGS_ "\"-fPIC\"")
       set(SMPI_Fortran_LIBS "")
       set(SMPI_FLANG 1)
     endif()
-    string(REGEX REPLACE " *-f[a-z]+-prefix-map=[^ ]*" "" SMPI_Fortran_FLAGS "${SMPI_Fortran_FLAGS} ${CMAKE_Fortran_FLAGS}")
+    set(SMPI_Fortran_FLAGS "${SMPI_Fortran_FLAGS_} ${SMPI_Fortran_FLAGS}")
 
     ## Request debugging flags for Fortran too
     set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -g")
@@ -339,15 +333,11 @@ endif()
 
 CHECK_INCLUDE_FILE("valgrind/valgrind.h" HAVE_VALGRIND_H)
 CHECK_INCLUDE_FILE("unistd.h" HAVE_UNISTD_H)
-CHECK_INCLUDE_FILE("signal.h" HAVE_SIGNAL_H)
-CHECK_INCLUDE_FILE("sys/param.h" HAVE_SYS_PARAM_H)
-CHECK_INCLUDE_FILE("sys/sysctl.h" HAVE_SYS_SYSCTL_H)
 CHECK_INCLUDE_FILE("linux/futex.h" HAVE_FUTEX_H)
 
 CHECK_FUNCTION_EXISTS(dlfunc HAVE_DLFUNC)
 CHECK_FUNCTION_EXISTS(gettimeofday HAVE_GETTIMEOFDAY)
 CHECK_FUNCTION_EXISTS(nanosleep HAVE_NANOSLEEP)
-CHECK_FUNCTION_EXISTS(getdtablesize HAVE_GETDTABLESIZE)
 CHECK_FUNCTION_EXISTS(sysconf HAVE_SYSCONF)
 CHECK_FUNCTION_EXISTS(process_vm_readv HAVE_PROCESS_VM_READV)
 CHECK_FUNCTION_EXISTS(mmap HAVE_MMAP)
@@ -374,6 +364,10 @@ if(enable_model-checking AND NOT "${CMAKE_SYSTEM}" MATCHES "Linux|FreeBSD")
   set(enable_model-checking FALSE)
 endif()
 
+if(enable_model-checking AND minimal-bindings)
+  message(FATAL_ERROR "Compile-time option 'minimal-bindings' cannot be enabled with 'model-checking'")
+endif()
+
 if(HAVE_MMAP)
   SET(HAVE_MMALLOC 1)
 else()
@@ -396,23 +390,13 @@ else()
   SET(SIMGRID_HAVE_MALLOCATOR 0)
 endif()
 
-if (minimal-bindings)
-  message(STATUS "Don't look for libunwind as we build minimal binding libraries.")
-  if(enable_model-checking)
-    message(FATAL_ERROR "You cannot enable model-checking and minimal-bindings at the same time.")
-  endif()
-else()
+if(enable_model-checking)
   include(FindLibunwind)
   if(HAVE_LIBUNWIND)
     SET(SIMGRID_DEP "${SIMGRID_DEP} ${LIBUNWIND_LIBRARIES}")
   else()
-    if(enable_model-checking)
-      message(FATAL_ERROR "Please install libunwind-dev libdw-dev libelf-dev libevent-dev if you want to compile the SimGrid model checker.")
-    endif()
+    message(FATAL_ERROR "Please install libunwind-dev libdw-dev libelf-dev libevent-dev if you want to compile the SimGrid model checker.")
   endif()
-endif()
-
-if(enable_model-checking)
   find_package(Libdw REQUIRED)
   find_package(Libelf REQUIRED)
   find_package(Libevent REQUIRED)

@@ -18,8 +18,16 @@ namespace routing {
 void EmptyZone::get_graph(const s_xbt_graph_t* /*graph*/, std::map<std::string, xbt_node_t, std::less<>>* /*nodes*/,
                           std::map<std::string, xbt_edge_t, std::less<>>* /*edges*/)
 {
-  XBT_ERROR("No routing no graph");
+  xbt_die("No routing no graph");
 }
 } // namespace routing
 } // namespace kernel
+
+namespace s4u {
+NetZone* create_empty_zone(const std::string& name)
+{
+  return (new kernel::routing::EmptyZone(name))->get_iface();
+}
+} // namespace s4u
+
 } // namespace simgrid

@@ -20,8 +20,12 @@ class XBT_PUBLIC IoImpl : public ActivityImpl_T<IoImpl> {
   s4u::Io::OpType type_           = s4u::Io::OpType::READ;
   sg_size_t performed_ioops_      = 0;
   resource::Action* timeout_detector_ = nullptr;
+  s4u::Io* piface_;
 
 public:
+  IoImpl();
+  s4u::Io* get_iface() { return piface_; }
+
   IoImpl& set_timeout(double timeout) override;
   IoImpl& set_size(sg_size_t size);
   IoImpl& set_type(s4u::Io::OpType type);
@@ -33,6 +37,7 @@ public:
   IoImpl* start();
   void post() override;
   void finish() override;
+  static void wait_any_for(actor::ActorImpl* issuer, const std::vector<IoImpl*>& ios, double timeout);
 };
 } // namespace activity
 } // namespace kernel

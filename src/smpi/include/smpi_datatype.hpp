@@ -11,18 +11,26 @@
 #include <string>
 #include <vector>
 
-constexpr unsigned DT_FLAG_DESTROYED   = 0x0001; /**< user destroyed but some other layers still have a reference */
-constexpr unsigned DT_FLAG_COMMITED    = 0x0002; /**< ready to be used for a send/recv operation */
-constexpr unsigned DT_FLAG_CONTIGUOUS  = 0x0004; /**< contiguous datatype */
-constexpr unsigned DT_FLAG_OVERLAP     = 0x0008; /**< datatype is unproper for a recv operation */
-constexpr unsigned DT_FLAG_USER_LB     = 0x0010; /**< has a user defined LB */
-constexpr unsigned DT_FLAG_USER_UB     = 0x0020; /**< has a user defined UB */
-constexpr unsigned DT_FLAG_PREDEFINED  = 0x0040; /**< cannot be removed: initial and predefined datatypes */
-constexpr unsigned DT_FLAG_NO_GAPS     = 0x0080; /**< no gaps around the datatype */
-constexpr unsigned DT_FLAG_DATA        = 0x0100; /**< data or control structure */
-constexpr unsigned DT_FLAG_ONE_SIDED   = 0x0200; /**< datatype can be used for one sided operations */
-constexpr unsigned DT_FLAG_UNAVAILABLE = 0x0400; /**< datatypes unavailable on the build (OS or compiler dependent) */
-constexpr unsigned DT_FLAG_DERIVED     = 0x0800; /**< is the datatype derived ? */
+constexpr unsigned DT_FLAG_DESTROYED   = 0x00001; /**< user destroyed but some other layers still have a reference */
+constexpr unsigned DT_FLAG_COMMITED    = 0x00002; /**< ready to be used for a send/recv operation */
+constexpr unsigned DT_FLAG_CONTIGUOUS  = 0x00004; /**< contiguous datatype */
+constexpr unsigned DT_FLAG_OVERLAP     = 0x00008; /**< datatype is unproper for a recv operation */
+constexpr unsigned DT_FLAG_USER_LB     = 0x00010; /**< has a user defined LB */
+constexpr unsigned DT_FLAG_USER_UB     = 0x00020; /**< has a user defined UB */
+constexpr unsigned DT_FLAG_PREDEFINED  = 0x00040; /**< cannot be removed: initial and predefined datatypes */
+constexpr unsigned DT_FLAG_NO_GAPS     = 0x00080; /**< no gaps around the datatype */
+constexpr unsigned DT_FLAG_DATA        = 0x00100; /**< data or control structure */
+constexpr unsigned DT_FLAG_ONE_SIDED   = 0x00200; /**< datatype can be used for one sided operations */
+constexpr unsigned DT_FLAG_UNAVAILABLE = 0x00400; /**< datatypes unavailable on the build (OS or compiler dependent) */
+constexpr unsigned DT_FLAG_DERIVED     = 0x00800; /**< is the datatype derived ? */
+constexpr unsigned DT_FLAG_C_INTEGER   = 0x01000; /**< Family: C ints */
+constexpr unsigned DT_FLAG_F_INTEGER   = 0x02000; /**< Family: F ints */
+constexpr unsigned DT_FLAG_FP          = 0x04000; /**< Family: Floating point */
+constexpr unsigned DT_FLAG_LOGICAL     = 0x08000; /**< Family: Logical */
+constexpr unsigned DT_FLAG_COMPLEX     = 0x10000; /**< Family: Complex */
+constexpr unsigned DT_FLAG_BYTE        = 0x20000; /**< Family: Poor lonesome byte */
+constexpr unsigned DT_FLAG_MULTILANG   = 0x40000; /**< Family: Multi-language */
+constexpr unsigned DT_FLAG_REDUCTION   = 0x80000; /**< Family: Dual types for maxloc/minloc */
 /*
  * We should make the difference here between the predefined contiguous and non contiguous
  * datatypes. The DT_FLAG_BASIC is held by all predefined contiguous datatypes.
@@ -86,6 +94,9 @@ class Datatype_contents {
                     int number_of_integers, const int* integers, 
                     int number_of_addresses, const MPI_Aint* addresses, 
                     int number_of_datatypes, const MPI_Datatype* datatypes);
+  Datatype_contents(const Datatype_contents&) = delete;
+  Datatype_contents& operator=(const Datatype_contents&) = delete;
+  ~Datatype_contents();
 };
 
 class Datatype : public F2C, public Keyval{
@@ -101,6 +112,7 @@ class Datatype : public F2C, public Keyval{
   int flags_;
   int refcount_ = 1;
   std::unique_ptr<Datatype_contents> contents_ = nullptr;
+  MPI_Datatype duplicated_datatype_ = MPI_DATATYPE_NULL;
 
 protected:
   template <typename... Args> void set_contents(Args&&... args)
@@ -119,13 +131,13 @@ public:
   Datatype(const Datatype&) = delete;
   Datatype& operator=(const Datatype&) = delete;
   ~Datatype() override;
-
-  const char* name() const { return name_.c_str(); }
+  std::string name() const override {return name_.empty() ? std::string("MPI_Datatype") : name_;}
   size_t size() const { return size_; }
   MPI_Aint lb() const { return lb_; }
   MPI_Aint ub() const { return ub_; }
   int flags() const { return flags_; }
   int refcount() const { return refcount_; }
+  MPI_Datatype duplicated_datatype() const { return duplicated_datatype_; }
 
   void ref();
   static void unref(MPI_Datatype datatype);

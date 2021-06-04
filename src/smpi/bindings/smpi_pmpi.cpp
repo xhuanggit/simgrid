@@ -11,6 +11,7 @@
 #include "smpi_comm.hpp"
 #include "smpi_datatype_derived.hpp"
 #include "smpi_status.hpp"
+#include "smpi_coll.hpp"
 #include "src/kernel/actor/ActorImpl.hpp"
 #include "src/smpi/include/smpi_actor.hpp"
 
@@ -20,14 +21,13 @@ XBT_LOG_NEW_DEFAULT_SUBCATEGORY(smpi_pmpi, smpi, "Logging specific to SMPI (pmpi
 void TRACE_smpi_set_category(const char *category)
 {
   //need to end bench otherwise categories for execution tasks are wrong
-  smpi_bench_end();
+  const SmpiBenchGuard suspend_bench;
+
   if (category != nullptr) {
     // declare category
     TRACE_category(category);
     smpi_process()->set_tracing_category(category);
   }
-  //begin bench after changing process's category
-  smpi_bench_begin();
 }
 
 /* PMPI User level calls */
@@ -37,12 +37,21 @@ int PMPI_Init(int*, char***)
   xbt_assert(simgrid::s4u::Engine::is_initialized(),
              "Your MPI program was not properly initialized. The easiest is to use smpirun to start it.");
 
-  xbt_assert(not smpi_process()->initializing());
-  xbt_assert(not smpi_process()->initialized());
+  if(smpi_process()->initializing()){
+    XBT_WARN("SMPI is already initializing - MPI_Init called twice ?");
+    return MPI_ERR_OTHER;
+  }
+  if(smpi_process()->initialized()){
+    XBT_WARN("SMPI already initialized once - MPI_Init called twice ?");
+    return MPI_ERR_OTHER;
+  }
+  if(smpi_process()->finalized()){
+    XBT_WARN("SMPI already finalized");
+    return MPI_ERR_OTHER;
+  }
 
   simgrid::smpi::ActorExt::init();
-  int rank_traced = simgrid::s4u::this_actor::get_pid();
-  TRACE_smpi_init(rank_traced, __func__);
+  TRACE_smpi_init(simgrid::s4u::this_actor::get_pid(), __func__);
   smpi_bench_begin();
   smpi_process()->mark_as_initialized();
 
@@ -54,8 +63,11 @@ int PMPI_Init(int*, char***)
 int PMPI_Finalize()
 {
   smpi_bench_end();
-  int rank_traced = simgrid::s4u::this_actor::get_pid();
+  aid_t rank_traced = simgrid::s4u::this_actor::get_pid();
   TRACE_smpi_comm_in(rank_traced, __func__, new simgrid::instr::NoOpTIData("finalize"));
+
+  if(simgrid::config::get_value<bool>("smpi/finalization-barrier"))
+    simgrid::smpi::colls::barrier(MPI_COMM_WORLD);
 
   smpi_process()->finalize();
 
@@ -114,13 +126,19 @@ int PMPI_Is_thread_main(int *flag)
   }
 }
 
-int PMPI_Abort(MPI_Comm /*comm*/, int /*errorcode*/)
+int PMPI_Abort(MPI_Comm comm, int /*errorcode*/)
 {
   smpi_bench_end();
-  // FIXME: should kill all processes in comm instead
-  XBT_WARN("MPI_Abort was called, something went probably wrong in this simulation ! Killing this process");
-  smx_actor_t actor = SIMIX_process_self();
-  simgrid::kernel::actor::simcall([actor] { actor->exit(); });
+  CHECK_COMM(1)
+  XBT_WARN("MPI_Abort was called, something went probably wrong in this simulation ! Killing all processes sharing the same MPI_COMM_WORLD");
+  smx_actor_t myself = SIMIX_process_self();
+  for (int i = 0; i < comm->size(); i++){
+    smx_actor_t actor = simgrid::kernel::actor::ActorImpl::by_pid(comm->group()->actor(i));
+    if (actor != nullptr && actor != myself)
+      simgrid::kernel::actor::simcall([actor] { actor->exit(); });
+  }
+  // now ourself
+  simgrid::kernel::actor::simcall([myself] { myself->exit(); });
   return MPI_SUCCESS;
 }
 
@@ -152,15 +170,13 @@ int PMPI_Get_address(const void *location, MPI_Aint * address)
 
 MPI_Aint PMPI_Aint_add(MPI_Aint address, MPI_Aint disp)
 {
-  if(address > PTRDIFF_MAX - disp)
-    xbt_die("overflow in MPI_Aint_add");
+  xbt_assert(address <= PTRDIFF_MAX - disp, "overflow in MPI_Aint_add");
   return address + disp;
 }
 
 MPI_Aint PMPI_Aint_diff(MPI_Aint address, MPI_Aint disp)
 {
-  if(address < PTRDIFF_MIN + disp)
-    xbt_die("underflow in MPI_Aint_diff");
+  xbt_assert(address >= PTRDIFF_MIN + disp, "underflow in MPI_Aint_diff");
   return address - disp;
 }
 
@@ -184,13 +200,12 @@ int PMPI_Get_count(const MPI_Status * status, MPI_Datatype datatype, int *count)
     size_t size = datatype->size();
     if (size == 0) {
       *count = 0;
-      return MPI_SUCCESS;
     } else if (status->count % size != 0) {
-      return MPI_UNDEFINED;
+      *count = MPI_UNDEFINED;
     } else {
       *count = simgrid::smpi::Status::get_count(status, datatype);
-      return MPI_SUCCESS;
     }
+    return MPI_SUCCESS;
   }
 }
 
@@ -201,6 +216,7 @@ int PMPI_Initialized(int* flag) {
 
 int PMPI_Alloc_mem(MPI_Aint size, MPI_Info /*info*/, void* baseptr)
 {
+  CHECK_NEGATIVE(1, MPI_ERR_COUNT, size)
   void *ptr = xbt_malloc(size);
   *static_cast<void**>(baseptr) = ptr;
   return MPI_SUCCESS;
@@ -235,19 +251,9 @@ int PMPI_Keyval_create(MPI_Copy_function* copy_fn, MPI_Delete_function* delete_f
 }
 
 int PMPI_Keyval_free(int* keyval) {
+  CHECK_NULL(1, MPI_ERR_ARG, keyval)
+  CHECK_VAL(1, MPI_KEYVAL_INVALID, MPI_ERR_KEYVAL, *keyval)
   return simgrid::smpi::Keyval::keyval_free<simgrid::smpi::Comm>(keyval);
-}
-
-MPI_Errhandler PMPI_Errhandler_f2c(MPI_Fint errhan){
-  if(errhan==-1)
-    return MPI_ERRHANDLER_NULL;
-  return simgrid::smpi::Errhandler::f2c(errhan);
-}
-
-MPI_Fint PMPI_Errhandler_c2f(MPI_Errhandler errhan){
-  if(errhan==MPI_ERRHANDLER_NULL)
-    return -1;
-  return errhan->c2f();
 }
 
 int PMPI_Buffer_attach(void *buf, int size){
@@ -255,12 +261,10 @@ int PMPI_Buffer_attach(void *buf, int size){
     return MPI_ERR_BUFFER;
   if(size<0)
     return MPI_ERR_ARG;
-  smpi_process()->set_bsend_buffer(buf, size);
-  return MPI_SUCCESS;
+  return smpi_process()->set_bsend_buffer(buf, size);
 }
 
 int PMPI_Buffer_detach(void* buffer, int* size){
   smpi_process()->bsend_buffer((void**)buffer, size);
-  smpi_process()->set_bsend_buffer(nullptr, 0);
-  return MPI_SUCCESS;
+  return smpi_process()->set_bsend_buffer(nullptr, 0);
 }

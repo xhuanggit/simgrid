@@ -39,27 +39,27 @@ public:
   DiskModel& operator=(const DiskModel&) = delete;
 
   virtual DiskImpl* create_disk(const std::string& name, double read_bandwidth, double write_bandwidth) = 0;
+
+  virtual DiskAction* io_start(const DiskImpl* disk, sg_size_t size, s4u::Io::OpType type) = 0;
 };
 
 /************
  * Resource *
  ************/
 class DiskImpl : public Resource_T<DiskImpl>, public xbt::PropertyHolder {
-  s4u::Host* host_           = nullptr;
   s4u::Disk piface_;
-  double read_bw_ = -1.0;
-  double write_bw_ = 1.0;
+  s4u::Host* host_                   = nullptr;
   lmm::Constraint* constraint_write_ = nullptr; /* Constraint for maximum write bandwidth*/
-  lmm::Constraint* constraint_read_ = nullptr;  /* Constraint for maximum read bandwidth*/
+  lmm::Constraint* constraint_read_  = nullptr; /* Constraint for maximum read bandwidth*/
 
 protected:
   ~DiskImpl() override = default; // Disallow direct deletion. Call destroy() instead.
 
 public:
-  DiskImpl(const std::string& name, double read_bandwidth, double write_bandwidth)
-      : Resource_T(name), piface_(name, this), read_bw_(read_bandwidth), write_bw_(write_bandwidth)
-  {
-  }
+  Metric read_bw_  = {0.0, 0, nullptr};
+  Metric write_bw_ = {0.0, 0, nullptr};
+
+  explicit DiskImpl(const std::string& name, double read_bandwidth, double write_bandwidth);
   DiskImpl(const DiskImpl&) = delete;
   DiskImpl& operator=(const DiskImpl&) = delete;
 
@@ -69,11 +69,11 @@ public:
   DiskImpl* set_host(s4u::Host* host);
   s4u::Host* get_host() const { return host_; }
 
-  DiskImpl* set_read_bandwidth(double read_bw);
-  double get_read_bandwidth() const { return read_bw_; }
+  virtual void set_read_bandwidth(double read_bw) = 0;
+  double get_read_bandwidth() const { return read_bw_.peak * read_bw_.scale; }
 
-  DiskImpl* set_write_bandwidth(double write_bw);
-  double get_write_bandwidth() const { return write_bw_; }
+  virtual void set_write_bandwidth(double write_bw) = 0;
+  double get_write_bandwidth() const { return write_bw_.peak * write_bw_.scale; }
 
   DiskImpl* set_read_constraint(lmm::Constraint* constraint_read);
   lmm::Constraint* get_read_constraint() const { return constraint_read_; }
@@ -81,17 +81,16 @@ public:
   DiskImpl* set_write_constraint(lmm::Constraint* constraint_write);
   lmm::Constraint* get_write_constraint() const { return constraint_write_; }
 
+  DiskImpl* set_read_bandwidth_profile(profile::Profile* profile);
+  DiskImpl* set_write_bandwidth_profile(profile::Profile* profile);
+
   /** @brief Check if the Disk is used (if an action currently uses its resources) */
   bool is_used() const override;
-  void apply_event(profile::Event* event, double value) override;
   void turn_on() override;
   void turn_off() override;
 
   void seal() override;
   void destroy(); // Must be called instead of the destructor
-  virtual DiskAction* io_start(sg_size_t size, s4u::Io::OpType type) = 0;
-  virtual DiskAction* read(sg_size_t size)                           = 0;
-  virtual DiskAction* write(sg_size_t size)                          = 0;
 };
 
 /**********
@@ -102,27 +101,10 @@ class DiskAction : public Action {
 public:
   static xbt::signal<void(DiskAction const&, Action::State, Action::State)> on_state_change;
 
-  DiskAction(Model* model, double cost, bool failed, DiskImpl* disk, s4u::Io::OpType type)
-      : Action(model, cost, failed), type_(type), disk_(disk){};
-
-  /**
-   * @brief diskAction constructor
-   *
-   * @param model The DiskModel associated to this DiskAction
-   * @param cost The cost of this DiskAction in bytes
-   * @param failed [description]
-   * @param var The lmm variable associated to this DiskAction if it is part of a LMM component
-   * @param disk The Disk associated to this DiskAction
-   * @param type [description]
-   */
-  DiskAction(kernel::resource::Model* model, double cost, bool failed, kernel::lmm::Variable* var, DiskImpl* disk,
-             s4u::Io::OpType type)
-      : Action(model, cost, failed, var), type_(type), disk_(disk){};
-
+  using Action::Action;
   void set_state(simgrid::kernel::resource::Action::State state) override;
 
-  s4u::Io::OpType type_;
-  DiskImpl* disk_;
+  double sharing_penalty_ = {};
 };
 
 } // namespace resource

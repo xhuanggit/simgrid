@@ -13,11 +13,26 @@
 #include <xbt/graph.h>
 
 #include <map>
+#include <unordered_set>
 #include <vector>
 
 namespace simgrid {
 namespace kernel {
 namespace routing {
+
+class Route {
+public:
+  Route() = default;
+  explicit Route(NetPoint* src, NetPoint* dst, NetPoint* gwSrc, NetPoint* gwDst)
+      : src_(src), dst_(dst), gw_src_(gwSrc), gw_dst_(gwDst)
+  {
+  }
+  NetPoint* src_    = nullptr;
+  NetPoint* dst_    = nullptr;
+  NetPoint* gw_src_ = nullptr;
+  NetPoint* gw_dst_ = nullptr;
+  std::vector<resource::LinkImpl*> link_list_;
+};
 
 class BypassRoute {
 public:
@@ -68,15 +83,8 @@ class XBT_PUBLIC NetZoneImpl : public xbt::PropertyHolder {
   std::string name_;
   bool sealed_ = false; // We cannot add more content when sealed
 
-  std::map<std::pair<NetPoint*, NetPoint*>, BypassRoute*> bypass_routes_; // src x dst -> route
+  std::map<std::pair<const NetPoint*, const NetPoint*>, BypassRoute*> bypass_routes_; // src x dst -> route
   routing::NetPoint* netpoint_ = nullptr;                                 // Our representative in the father NetZone
-  std::shared_ptr<resource::NetworkModel> network_model_;
-  std::shared_ptr<resource::CpuModel> cpu_model_vm_;
-  std::shared_ptr<resource::CpuModel> cpu_model_pm_;
-  std::shared_ptr<resource::DiskModel> disk_model_;
-  std::shared_ptr<simgrid::surf::HostModel> host_model_;
-  /** @brief Perform sealing procedure for derived classes, if necessary */
-  virtual void do_seal(){};
 
 protected:
   explicit NetZoneImpl(const std::string& name);
@@ -92,21 +100,21 @@ protected:
    * @param into Container into which the traversed links and gateway information should be pushed
    * @param latency Accumulator in which the latencies should be added (caller must set it to 0)
    */
-  virtual void get_local_route(NetPoint* src, NetPoint* dst, RouteCreationArgs* into, double* latency) = 0;
+  virtual void get_local_route(const NetPoint* src, const NetPoint* dst, Route* into, double* latency) = 0;
   /** @brief retrieves the list of all routes of size 1 (of type src x dst x Link) */
   /* returns whether we found a bypass path */
-  bool get_bypass_route(routing::NetPoint* src, routing::NetPoint* dst,
-                        /* OUT */ std::vector<resource::LinkImpl*>& links, double* latency);
+  bool get_bypass_route(const routing::NetPoint* src, const routing::NetPoint* dst,
+                        /* OUT */ std::vector<resource::LinkImpl*>& links, double* latency,
+                        std::unordered_set<NetZoneImpl*>& netzones);
+
+  /** @brief Get the NetZone that is represented by the netpoint */
+  const NetZoneImpl* get_netzone_recursive(const NetPoint* netpoint) const;
 
 public:
   enum class RoutingMode {
-    unset = 0, /**< Undefined type                                   */
-    base,      /**< Base case: use simple link lists for routing     */
-    recursive  /**< Recursive case: also return gateway information  */
+    base,     /**< Base case: use simple link lists for routing     */
+    recursive /**< Recursive case: also return gateway information  */
   };
-
-  /* FIXME: protect the following fields once the construction madness is sorted out */
-  RoutingMode hierarchy_ = RoutingMode::unset;
 
   /** @brief Retrieves the network model associated to this NetZone */
   const std::shared_ptr<resource::NetworkModel>& get_network_model() const { return network_model_; }
@@ -127,34 +135,41 @@ public:
   NetZoneImpl* get_parent() const { return parent_; }
   /** @brief Returns the list of direct children (no grand-children). This returns the internal data, no copy.
    * Don't mess with it.*/
-  std::vector<NetZoneImpl*>* get_children() { return &children_; }
-  void add_child(NetZoneImpl* new_zone);
+  const std::vector<NetZoneImpl*>& get_children() const { return children_; }
+  /** @brief Get current netzone hierarchy */
+  RoutingMode get_hierarchy() const { return hierarchy_; }
 
   /** @brief Retrieves the name of that netzone as a C++ string */
   const std::string& get_name() const { return name_; }
   /** @brief Retrieves the name of that netzone as a C string */
   const char* get_cname() const { return name_.c_str(); };
 
+  /** @brief Gets the netpoint associated to this netzone */
+  kernel::routing::NetPoint* get_netpoint() const { return netpoint_; }
+
   std::vector<s4u::Host*> get_all_hosts() const;
   int get_host_count() const;
 
   /** @brief Make a host within that NetZone */
-  s4u::Host* create_host(const std::string& name, const std::vector<double>& speed_per_pstate, int core_amount);
+  s4u::Host* create_host(const std::string& name, const std::vector<double>& speed_per_pstate);
   /** @brief Create a disk with the disk model from this NetZone */
   s4u::Disk* create_disk(const std::string& name, double read_bandwidth, double write_bandwidth);
   /** @brief Make a link within that NetZone */
-  virtual s4u::Link* create_link(const std::string& name, const std::vector<double>& bandwidths,
-                                 s4u::Link::SharingPolicy policy);
+  virtual s4u::Link* create_link(const std::string& name, const std::vector<double>& bandwidths);
+  /** @brief Make a router within that NetZone */
+  NetPoint* create_router(const std::string& name);
   /** @brief Creates a new route in this NetZone */
   virtual void add_bypass_route(NetPoint* src, NetPoint* dst, NetPoint* gw_src, NetPoint* gw_dst,
                                 std::vector<resource::LinkImpl*>& link_list, bool symmetrical);
 
   /** @brief Seal your netzone once you're done adding content, and before routing stuff through it */
   void seal();
+  /** @brief Check if netpoint is a member of this NetZone or some of the childrens */
+  bool is_component_recursive(const NetPoint* netpoint) const;
   virtual int add_component(kernel::routing::NetPoint* elm); /* A host, a router or a netzone, whatever */
   virtual void add_route(kernel::routing::NetPoint* src, kernel::routing::NetPoint* dst,
                          kernel::routing::NetPoint* gw_src, kernel::routing::NetPoint* gw_dst,
-                         std::vector<kernel::resource::LinkImpl*>& link_list, bool symmetrical);
+                         const std::vector<kernel::resource::LinkImpl*>& link_list, bool symmetrical);
   /** @brief Set parent of this Netzone */
   void set_parent(NetZoneImpl* parent);
   /** @brief Set network model for this Netzone */
@@ -164,18 +179,36 @@ public:
   void set_disk_model(std::shared_ptr<resource::DiskModel> disk_model);
   void set_host_model(std::shared_ptr<surf::HostModel> host_model);
 
-  /* @brief get the route between two nodes in the full platform
+  /** @brief get the route between two nodes in the full platform
    *
    * @param src where from
    * @param dst where to
    * @param links Accumulator in which all traversed links should be pushed (caller must empty it)
    * @param latency Accumulator in which the latencies should be added (caller must set it to 0)
    */
-  static void get_global_route(routing::NetPoint* src, routing::NetPoint* dst,
+  static void get_global_route(const routing::NetPoint* src, const routing::NetPoint* dst,
                                /* OUT */ std::vector<resource::LinkImpl*>& links, double* latency);
+
+  /** @brief Similar to get_global_route but get the NetZones traversed by route */
+  static void get_global_route_with_netzones(const routing::NetPoint* src, const routing::NetPoint* dst,
+                                             /* OUT */ std::vector<resource::LinkImpl*>& links, double* latency,
+                                             std::unordered_set<NetZoneImpl*>& netzones);
 
   virtual void get_graph(const s_xbt_graph_t* graph, std::map<std::string, xbt_node_t, std::less<>>* nodes,
                          std::map<std::string, xbt_edge_t, std::less<>>* edges) = 0;
+
+private:
+  RoutingMode hierarchy_ = RoutingMode::base;
+  std::shared_ptr<resource::NetworkModel> network_model_;
+  std::shared_ptr<resource::CpuModel> cpu_model_vm_;
+  std::shared_ptr<resource::CpuModel> cpu_model_pm_;
+  std::shared_ptr<resource::DiskModel> disk_model_;
+  std::shared_ptr<simgrid::surf::HostModel> host_model_;
+  /** @brief Perform sealing procedure for derived classes, if necessary */
+  virtual void do_seal()
+  { /* obviously nothing to do by default */
+  }
+  void add_child(NetZoneImpl* new_zone);
 };
 } // namespace routing
 } // namespace kernel

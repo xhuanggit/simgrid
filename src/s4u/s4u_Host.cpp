@@ -3,6 +3,7 @@
 /* This program is free software; you can redistribute it and/or modify it
  * under the terms of the license (GNU LGPL) which comes with this package. */
 
+#include "simgrid/Exception.hpp"
 #include "simgrid/host.h"
 #include "simgrid/kernel/routing/NetPoint.hpp"
 #include "simgrid/s4u/Actor.hpp"
@@ -12,6 +13,7 @@
 #include "simgrid/s4u/VirtualMachine.hpp"
 #include "src/plugins/vm/VirtualMachineImpl.hpp"
 #include "src/surf/HostImpl.hpp"
+#include "xbt/parse_units.hpp"
 
 #include <algorithm>
 #include <string>
@@ -30,13 +32,6 @@ xbt::signal<void(Host const&)> Host::on_destruction;
 xbt::signal<void(Host const&)> Host::on_state_change;
 xbt::signal<void(Host const&)> Host::on_speed_change;
 
-Host::Host(const std::string& name) : name_(name)
-{
-  xbt_assert(Host::by_name_or_null(name_) == nullptr, "Refusing to create a second host named '%s'.", get_cname());
-  Engine::get_instance()->host_register(name_, this);
-  new surf::HostImpl(this);
-}
-
 Host* Host::set_netpoint(kernel::routing::NetPoint* netpoint)
 {
   pimpl_netpoint_ = netpoint;
@@ -45,7 +40,6 @@ Host* Host::set_netpoint(kernel::routing::NetPoint* netpoint)
 
 Host::~Host()
 {
-  delete pimpl_;
   if (pimpl_netpoint_ != nullptr) // not removed yet by a children class
     Engine::get_instance()->netpoint_unregister(pimpl_netpoint_);
   delete pimpl_cpu;
@@ -60,9 +54,7 @@ Host::~Host()
  */
 void Host::destroy()
 {
-  on_destruction(*this);
-  Engine::get_instance()->host_unregister(std::string(name_));
-  delete this;
+  kernel::actor::simcall([this] { this->pimpl_->destroy(); });
 }
 
 Host* Host::by_name(const std::string& name)
@@ -77,9 +69,18 @@ Host* Host::by_name_or_null(const std::string& name)
 Host* Host::current()
 {
   kernel::actor::ActorImpl* self = kernel::actor::ActorImpl::self();
-  if (self == nullptr)
-    xbt_die("Cannot call Host::current() from the maestro context");
+  xbt_assert(self != nullptr, "Cannot call Host::current() from the maestro context");
   return self->get_host();
+}
+
+xbt::string const& Host::get_name() const
+{
+  return this->pimpl_->get_name();
+}
+
+const char* Host::get_cname() const
+{
+  return this->pimpl_->get_cname();
 }
 
 void Host::turn_on()
@@ -133,7 +134,7 @@ std::vector<ActorPtr> Host::get_all_actors() const
 }
 
 /** @brief Returns how many actors (daemonized or not) have been launched on this host */
-int Host::get_actor_count() const
+size_t Host::get_actor_count() const
 {
   return pimpl_->get_actor_count();
 }
@@ -171,7 +172,7 @@ void Host::route_to(const Host* dest, std::vector<kernel::resource::LinkImpl*>& 
 }
 
 /** @brief Returns the networking zone englobing that host */
-NetZone* Host::get_englobing_zone()
+NetZone* Host::get_englobing_zone() const
 {
   return pimpl_netpoint_->get_englobing_zone()->get_iface();
 }
@@ -264,6 +265,33 @@ Host* Host::set_core_count(int core_count)
   return this;
 }
 
+Host* Host::set_pstate_speed(const std::vector<double>& speed_per_state)
+{
+  kernel::actor::simcall([this, &speed_per_state] { pimpl_cpu->set_pstate_speed(speed_per_state); });
+  return this;
+}
+
+std::vector<double> Host::convert_pstate_speed_vector(const std::vector<std::string>& speed_per_state)
+{
+  std::vector<double> speed_list;
+  speed_list.reserve(speed_per_state.size());
+  for (const auto& speed_str : speed_per_state) {
+    try {
+      double speed = xbt_parse_get_speed("", 0, speed_str, "");
+      speed_list.push_back(speed);
+    } catch (const simgrid::ParseError&) {
+      throw std::invalid_argument(std::string("Invalid speed value: ") + speed_str);
+    }
+  }
+  return speed_list;
+}
+
+Host* Host::set_pstate_speed(const std::vector<std::string>& speed_per_state)
+{
+  set_pstate_speed(Host::convert_pstate_speed_vector(speed_per_state));
+  return this;
+}
+
 /** @brief Set the pstate at which the host should run */
 Host* Host::set_pstate(int pstate_index)
 {
@@ -277,6 +305,12 @@ int Host::get_pstate() const
   return this->pimpl_cpu->get_pstate();
 }
 
+Host* Host::set_coordinates(const std::string& coords)
+{
+  if (not coords.empty())
+    kernel::actor::simcall([this, coords] { this->pimpl_netpoint_->set_coordinates(coords); });
+  return this;
+}
 std::vector<Disk*> Host::get_disks() const
 {
   return this->pimpl_->get_disks();
@@ -284,9 +318,30 @@ std::vector<Disk*> Host::get_disks() const
 
 Disk* Host::create_disk(const std::string& name, double read_bandwidth, double write_bandwidth)
 {
-  auto disk =
-      this->get_netpoint()->get_englobing_zone()->get_disk_model()->create_disk(name, read_bandwidth, write_bandwidth);
-  return disk->set_host(this)->get_iface();
+  return kernel::actor::simcall([this, &name, read_bandwidth, write_bandwidth] {
+    auto* disk = pimpl_->create_disk(name, read_bandwidth, write_bandwidth);
+    pimpl_->add_disk(disk);
+    return disk;
+  });
+}
+
+Disk* Host::create_disk(const std::string& name, const std::string& read_bandwidth, const std::string& write_bandwidth)
+{
+  double d_read;
+  try {
+    d_read = xbt_parse_get_bandwidth("", 0, read_bandwidth, "");
+  } catch (const simgrid::ParseError&) {
+    throw std::invalid_argument(std::string("Impossible to create disk: ") + name +
+                                std::string(". Invalid read bandwidth: ") + read_bandwidth);
+  }
+  double d_write;
+  try {
+    d_write = xbt_parse_get_bandwidth("", 0, write_bandwidth, "");
+  } catch (const simgrid::ParseError&) {
+    throw std::invalid_argument(std::string("Impossible to create disk: ") + name +
+                                std::string(". Invalid write bandwidth: ") + write_bandwidth);
+  }
+  return create_disk(name, d_read, d_write);
 }
 
 void Host::add_disk(const Disk* disk)
@@ -317,6 +372,13 @@ void Host::execute(double flops) const
 void Host::execute(double flops, double priority) const
 {
   this_actor::exec_init(flops)->set_priority(1 / priority)->vetoable_start()->wait();
+}
+
+Host* Host::seal()
+{
+  kernel::actor::simcall([this]() { this->pimpl_->seal(); });
+  simgrid::s4u::Host::on_creation(*this); // notify the signal
+  return this;
 }
 
 } // namespace s4u
@@ -394,18 +456,6 @@ void* sg_host_data(const_sg_host_t host) // XBT_ATTRIB_DEPRECATED_v330
 void sg_host_data_set(sg_host_t host, void* userdata) // XBT_ATTRIB_DEPRECATED_v330
 {
   sg_host_set_data(host, userdata);
-}
-void* sg_host_user(sg_host_t host) // XBT_ATTRIB_DEPRECATED_v328
-{
-  return host->get_data();
-}
-void sg_host_user_set(sg_host_t host, void* userdata) // XBT_ATTRIB_DEPRECATED_v328
-{
-  host->set_data(userdata);
-}
-void sg_host_user_destroy(sg_host_t host) // XBT_ATTRIB_DEPRECATED_v328
-{
-  host->set_data(nullptr);
 }
 
 // ========= Disk related functions ============

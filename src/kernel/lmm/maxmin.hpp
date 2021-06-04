@@ -10,6 +10,7 @@
 #include "simgrid/s4u/Link.hpp"
 #include "src/surf/surf_interface.hpp"
 #include "xbt/asserts.h"
+#include "xbt/ex.h"
 #include "xbt/mallocator.h"
 
 #include <boost/intrusive/list.hpp>
@@ -142,6 +143,12 @@ namespace lmm {
  */
 class XBT_PUBLIC Element {
 public:
+  // Use rule-of-three, and implicitely disable the move constructor which should be 'noexcept' according to C++ Core
+  // Guidelines.
+  Element()               = default;
+  Element(const Element&) = default;
+  ~Element()              = default;
+
   int get_concurrency() const;
   void decrease_concurrency();
   void increase_concurrency();
@@ -186,6 +193,8 @@ public:
   /** @brief Unshare a constraint. */
   void unshare() { sharing_policy_ = s4u::Link::SharingPolicy::FATPIPE; }
 
+  /** @brief Set how a constraint is shared  */
+  void set_sharing_policy(s4u::Link::SharingPolicy policy) { sharing_policy_ = policy; }
   /** @brief Check how a constraint is shared  */
   s4u::Link::SharingPolicy get_sharing_policy() const { return sharing_policy_; }
 

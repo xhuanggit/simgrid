@@ -7,9 +7,9 @@
 #include "simgrid/engine.h"
 #include "simgrid/forward.h"
 #include "simgrid/mailbox.h"
-#include "xbt/asserts.h"
 #include "xbt/log.h"
 #include "xbt/str.h"
+#include "xbt/sysdep.h"
 
 #define FINALIZE 221297 /* a magic number to tell people to stop working */
 
@@ -17,14 +17,14 @@
 
 XBT_LOG_NEW_DEFAULT_CATEGORY(app_masterworker, "Messages specific for this example");
 
-/* Main function of the master process */
+/* Main function of the master actor */
 static void master(int argc, char* argv[])
 {
   xbt_assert(argc == 5, "The master function expects 4 arguments from the XML deployment file");
-  long number_of_tasks = xbt_str_parse_int(argv[1], "Invalid amount of tasks: %s");       /* - Number of tasks      */
-  double comp_size     = xbt_str_parse_double(argv[2], "Invalid computational size: %s"); /* - Compute cost    */
-  long comm_size       = xbt_str_parse_int(argv[3], "Invalid communication size: %s");    /* - Communication size */
-  long workers_count   = xbt_str_parse_int(argv[4], "Invalid amount of workers: %s");     /* - Number of workers    */
+  long number_of_tasks = xbt_str_parse_int(argv[1], "Invalid amount of tasks");       /* - Number of tasks      */
+  double comp_size     = xbt_str_parse_double(argv[2], "Invalid computational size"); /* - Compute cost    */
+  long comm_size       = xbt_str_parse_int(argv[3], "Invalid communication size");    /* - Communication size */
+  long workers_count   = xbt_str_parse_int(argv[4], "Invalid amount of workers");     /* - Number of workers    */
 
   XBT_INFO("Got %ld workers and %ld tasks to process", workers_count, number_of_tasks);
 
@@ -55,14 +55,14 @@ static void master(int argc, char* argv[])
   }
 }
 
-/* Main functions of the Worker processes */
+/* Main functions of the Worker actors */
 static void worker(int argc, char* argv[])
 {
   xbt_assert(argc == 2,
              "The worker expects a single argument from the XML deployment file: its worker ID (its numerical rank)");
   char mailbox_name[80];
 
-  long id = xbt_str_parse_int(argv[1], "Invalid argument %s");
+  long id = xbt_str_parse_int(argv[1], "Invalid argument");
 
   snprintf(mailbox_name, 79, "worker-%ld", id);
   sg_mailbox_t mailbox = sg_mailbox_by_name(mailbox_name);
@@ -90,7 +90,7 @@ int main(int argc, char* argv[])
 
   simgrid_load_platform(argv[1]); /* - Load the platform description */
 
-  simgrid_register_function("master", master); /* - Register the function to be executed by the processes */
+  simgrid_register_function("master", master); /* - Register the function to be executed by the actors */
   simgrid_register_function("worker", worker);
   simgrid_load_deployment(argv[2]); /* - Deploy the application */
 

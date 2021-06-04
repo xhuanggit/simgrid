@@ -5,11 +5,13 @@
 #include "src/kernel/actor/SimcallObserver.hpp"
 #include "src/mc/Session.hpp"
 #include "src/mc/checker/Checker.hpp"
+#include "src/mc/mc_base.hpp"
 #include "src/mc/mc_comm_pattern.hpp"
 #include "src/mc/mc_exit.hpp"
 #include "src/mc/mc_pattern.hpp"
 #include "src/mc/mc_private.hpp"
 #include "src/mc/remote/RemoteProcess.hpp"
+#include "src/surf/HostImpl.hpp"
 
 #include <xbt/asserts.h>
 #include <xbt/log.h>
@@ -91,7 +93,7 @@ static inline smx_simcall_t MC_state_choose_request_for_process(const RemoteProc
 {
   /* reset the outgoing transition */
   simgrid::mc::ActorState* procstate = &state->actor_states_[actor->get_pid()];
-  state->transition_.pid_            = -1;
+  state->transition_.aid_              = -1;
   state->transition_.times_considered_ = -1;
   state->transition_.textual[0]        = '\0';
   state->executed_req_.call_         = Simcall::NONE;
@@ -169,7 +171,7 @@ static inline smx_simcall_t MC_state_choose_request_for_process(const RemoteProc
   if (not req)
     return nullptr;
 
-  state->transition_.pid_ = actor->get_pid();
+  state->transition_.aid_ = actor->get_pid();
   state->executed_req_    = *req;
 
   // Fetch the data of the request and translate it:
@@ -365,20 +367,23 @@ xbt::string const& Api::get_actor_host_name(smx_actor_t actor) const
 
   // Read the simgrid::xbt::string in the MCed process:
   simgrid::mc::ActorInformation* info = actor_info_cast(actor);
-  auto remote_string_address =
-      remote(reinterpret_cast<const simgrid::xbt::string_data*>(&actor->get_host()->get_name()));
-  simgrid::xbt::string_data remote_string = process->read(remote_string_address);
-  std::vector<char> hostname(remote_string.len + 1);
-  // no need to read the terminating null byte, and thus hostname[remote_string.len] is guaranteed to be '\0'
-  process->read_bytes(hostname.data(), remote_string.len, remote(remote_string.data));
-  info->hostname = &mc_model_checker->get_host_name(hostname.data());
+
+  if (not info->hostname) {
+    Remote<s4u::Host> temp_host = process->read(remote(actor->get_host()));
+    auto remote_string_address  = remote(&xbt::string::to_string_data(temp_host.get_buffer()->get_impl()->get_name()));
+    simgrid::xbt::string_data remote_string = process->read(remote_string_address);
+    std::vector<char> hostname(remote_string.len + 1);
+    // no need to read the terminating null byte, and thus hostname[remote_string.len] is guaranteed to be '\0'
+    process->read_bytes(hostname.data(), remote_string.len, remote(remote_string.data));
+    info->hostname = &mc_model_checker->get_host_name(hostname.data());
+  }
   return *info->hostname;
 }
 
-std::string Api::get_actor_name(smx_actor_t actor) const
+xbt::string const& Api::get_actor_name(smx_actor_t actor) const
 {
   if (mc_model_checker == nullptr)
-    return actor->get_cname();
+    return actor->get_name();
 
   simgrid::mc::ActorInformation* info = actor_info_cast(actor);
   if (info->name.empty()) {
@@ -396,7 +401,7 @@ std::string Api::get_actor_string(smx_actor_t actor) const
   if (actor) {
     res = "(" + std::to_string(actor->get_pid()) + ")";
     if (actor->get_host())
-      res += std::string(get_actor_host_name(actor)) + " (" + get_actor_name(actor) + ")";
+      res += std::string(get_actor_host_name(actor)) + " (" + std::string(get_actor_name(actor)) + ")";
     else
       res += get_actor_name(actor);
   } else
@@ -427,25 +432,26 @@ simgrid::mc::Checker* Api::initialize(char** argv, simgrid::mc::CheckerAlgorithm
   simgrid::mc::Checker* checker;
   switch (algo) {
     case CheckerAlgorithm::CommDeterminism:
-      checker = simgrid::mc::createCommunicationDeterminismChecker(session);
+      checker = simgrid::mc::create_communication_determinism_checker(session);
       break;
 
     case CheckerAlgorithm::UDPOR:
-      checker = simgrid::mc::createUdporChecker(session);
+      checker = simgrid::mc::create_udpor_checker(session);
       break;
 
     case CheckerAlgorithm::Safety:
-      checker = simgrid::mc::createSafetyChecker(session);
+      checker = simgrid::mc::create_safety_checker(session);
       break;
 
     case CheckerAlgorithm::Liveness:
-      checker = simgrid::mc::createLivenessChecker(session);
+      checker = simgrid::mc::create_liveness_checker(session);
       break;
 
     default:
       THROW_IMPOSSIBLE;
   }
 
+  // FIXME: session and checker are never deleted
   simgrid::mc::session_singleton = session;
   mc_model_checker->setChecker(checker);
   return checker;
@@ -527,10 +533,10 @@ std::vector<char> Api::get_pattern_comm_data(RemotePtr<kernel::activity::CommImp
 #if HAVE_SMPI
 bool Api::check_send_request_detached(smx_simcall_t const& simcall) const
 {
-  simgrid::smpi::Request mpi_request;
+  Remote<simgrid::smpi::Request> mpi_request;
   mc_model_checker->get_remote_process().read(
-      &mpi_request, remote(static_cast<smpi::Request*>(simcall_comm_isend__get__data(simcall))));
-  return mpi_request.detached();
+      mpi_request, remote(static_cast<smpi::Request*>(simcall_comm_isend__get__data(simcall))));
+  return mpi_request.get_buffer()->detached();
 }
 #endif
 
@@ -823,7 +829,7 @@ std::string Api::request_to_string(smx_simcall_t req, int value) const
       break;
 
     default:
-      type = SIMIX_simcall_name(req->call_);
+      type = SIMIX_simcall_name(*req);
       args = "??";
       break;
   }
@@ -908,14 +914,14 @@ std::string Api::request_get_dot_output(smx_simcall_t req, int value) const
 #if HAVE_SMPI
 int Api::get_smpi_request_tag(smx_simcall_t const& simcall, simgrid::simix::Simcall type) const
 {
-  simgrid::smpi::Request mpi_request;
   void* simcall_data = nullptr;
   if (type == Simcall::COMM_ISEND)
     simcall_data = simcall_comm_isend__get__data(simcall);
   else if (type == Simcall::COMM_IRECV)
     simcall_data = simcall_comm_irecv__get__data(simcall);
-  mc_model_checker->get_remote_process().read(&mpi_request, remote(static_cast<smpi::Request*>(simcall_data)));
-  return mpi_request.tag();
+  Remote<simgrid::smpi::Request> mpi_request;
+  mc_model_checker->get_remote_process().read(mpi_request, remote(static_cast<smpi::Request*>(simcall_data)));
+  return mpi_request.get_buffer()->tag();
 }
 #endif
 

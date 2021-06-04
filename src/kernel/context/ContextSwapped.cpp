@@ -6,6 +6,7 @@
 #include "simgrid/Exception.hpp"
 #include "simgrid/modelchecker.h"
 #include "src/internal_config.h"
+#include "src/kernel/EngineImpl.hpp"
 #include "src/kernel/actor/ActorImpl.hpp"
 #include "src/simix/smx_private.hpp"
 #include "xbt/parmap.hpp"
@@ -14,6 +15,7 @@
 
 #include <boost/core/demangle.hpp>
 #include <memory>
+#include <typeinfo>
 
 #ifdef _WIN32
 #include <malloc.h>
@@ -97,25 +99,22 @@ SwappedContext::SwappedContext(std::function<void()>&& code, smx_actor_t actor, 
       reinterpret_cast<unsigned char**>(stack_)[-1] = alloc;
 #elif !defined(_WIN32)
       void* alloc;
-      if (posix_memalign(&alloc, xbt_pagesize, size) != 0)
-        xbt_die("Failed to allocate stack.");
+      xbt_assert(posix_memalign(&alloc, xbt_pagesize, size) == 0, "Failed to allocate stack.");
       this->stack_ = static_cast<unsigned char*>(alloc);
 #else
       this->stack_ = static_cast<unsigned char*>(_aligned_malloc(size, xbt_pagesize));
 #endif
 
 #ifndef _WIN32
-      if (mprotect(this->stack_, smx_context_guard_size, PROT_NONE) == -1) {
-        xbt_die(
-            "Failed to protect stack: %s.\n"
-            "If you are running a lot of actors, you may be exceeding the amount of mappings allowed per process.\n"
-            "On Linux systems, change this value with sudo sysctl -w vm.max_map_count=newvalue (default value: 65536)\n"
-            "Please see "
-            "https://simgrid.org/doc/latest/Configuring_SimGrid.html#configuring-the-user-code-virtualization for more "
-            "information.",
-            strerror(errno));
-        /* This is fatal. We are going to fail at some point when we try reusing this. */
-      }
+      /* This is fatal. We are going to fail at some point when we try reusing this. */
+      xbt_assert(
+          mprotect(this->stack_, smx_context_guard_size, PROT_NONE) != -1,
+          "Failed to protect stack: %s.\n"
+          "If you are running a lot of actors, you may be exceeding the amount of mappings allowed per process.\n"
+          "On Linux systems, change this value with sudo sysctl -w vm.max_map_count=newvalue (default value: 65536)\n"
+          "Please see https://simgrid.org/doc/latest/Configuring_SimGrid.html#configuring-the-user-code-virtualization "
+          "for more information.",
+          strerror(errno));
 #endif
       this->stack_ = this->stack_ + smx_context_guard_size;
     } else {
@@ -149,7 +148,7 @@ SwappedContext::~SwappedContext()
   __tsan_destroy_fiber(tsan_fiber_);
 #endif
 #if HAVE_VALGRIND_H
-  if (RUNNING_ON_VALGRIND)
+  if (valgrind_stack_id_ != 0)
     VALGRIND_STACK_DEREGISTER(valgrind_stack_id_);
 #endif
 
@@ -208,6 +207,7 @@ void SwappedContext::swap_into(SwappedContext* to)
 /** Maestro wants to run all ready actors */
 void SwappedContextFactory::run_all()
 {
+  const auto* engine = EngineImpl::get_instance();
   /* This function is called by maestro at the beginning of a scheduling round to get all working threads executing some
    * stuff It is much easier to understand what happens if you see the working threads as bodies that swap their soul
    * for the ones of the simulated processes that must run.
@@ -225,17 +225,17 @@ void SwappedContextFactory::run_all()
     //     It only yields back to worker_context when the work array is exhausted.
     //   - So, resume() is only launched from the parmap for the first job of each minion.
     parmap_->apply(
-        [](const actor::ActorImpl* process) {
-          auto* context = static_cast<SwappedContext*>(process->context_.get());
+        [](const actor::ActorImpl* actor) {
+          auto* context = static_cast<SwappedContext*>(actor->context_.get());
           context->resume();
         },
-        simix_global->actors_to_run);
+        engine->get_actors_to_run());
   } else { // sequential execution
-    if (simix_global->actors_to_run.empty())
+    if (not engine->has_actors_to_run())
       return;
 
     /* maestro is already saved in the first slot of workers_context_ */
-    const actor::ActorImpl* first_actor = simix_global->actors_to_run.front();
+    const actor::ActorImpl* first_actor = engine->get_first_actor_to_run();
     process_index_          = 1;
     /* execute the first actor; it will chain to the others when using suspend() */
     static_cast<SwappedContext*>(first_actor->context_.get())->resume();
@@ -288,14 +288,15 @@ void SwappedContext::suspend()
       // When given that soul, the body will wait for the next scheduling round
     }
   } else { // sequential execution
+    const auto* engine = EngineImpl::get_instance();
     /* determine the next context */
     unsigned long int i = factory_.process_index_;
     factory_.process_index_++;
 
-    if (i < simix_global->actors_to_run.size()) {
+    if (i < engine->get_actor_to_run_count()) {
       /* Actually swap into the next actor directly without transiting to maestro */
       XBT_DEBUG("Run next actor");
-      next_context = static_cast<SwappedContext*>(simix_global->actors_to_run[i]->context_.get());
+      next_context = static_cast<SwappedContext*>(engine->get_actor_to_run_at(i)->context_.get());
     } else {
       /* all processes were run, actually return to maestro */
       XBT_DEBUG("No more actors to run");

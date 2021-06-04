@@ -75,9 +75,7 @@ static void linkContainers(simgrid::instr::Container* src, simgrid::instr::Conta
 
   // find common father
   simgrid::instr::Container* father = lowestCommonAncestor(src, dst);
-  if (not father) {
-    xbt_die("common father unknown, this is a tracing problem");
-  }
+  xbt_assert(father, "common father unknown, this is a tracing problem");
 
   // check if we already register this pair (we only need one direction)
   std::string aux1 = src->get_name() + dst->get_name();
@@ -122,12 +120,11 @@ static void recursiveGraphExtraction(const simgrid::s4u::NetZone* netzone, simgr
     return;
   }
   XBT_DEBUG("Graph extraction for NetZone = %s", netzone->get_cname());
-  if (not netzone->get_children().empty()) {
-    // bottom-up recursion
-    for (auto const& nz_son : netzone->get_children()) {
-      simgrid::instr::Container* child_container = container->children_.at(nz_son->get_name());
-      recursiveGraphExtraction(nz_son, child_container, filter);
-    }
+
+  // bottom-up recursion
+  for (auto const& nz_son : netzone->get_children()) {
+    simgrid::instr::Container* child_container = container->children_.at(nz_son->get_name());
+    recursiveGraphExtraction(nz_son, child_container, filter);
   }
 
   auto* graph = xbt_graph_new_graph(0, nullptr);
@@ -306,6 +303,9 @@ static void on_link_creation(s4u::Link const& link)
 
 static void on_host_creation(s4u::Host const& host)
 {
+  if (Container::by_name_or_null(host.get_name())) // This host already exists, do nothing
+    return;
+
   Container* container  = new HostContainer(host, currentContainer.back());
   const Container* root = Container::get_root();
 
@@ -339,17 +339,17 @@ static void on_action_state_change(kernel::resource::Action const& action,
     double value = action.get_variable()->get_value() * action.get_variable()->get_constraint_weight(i);
     /* Beware of composite actions: ptasks put links and cpus together. Extra pb: we cannot dynamic_cast from void* */
     kernel::resource::Resource* resource = action.get_variable()->get_constraint(i)->get_id();
-    const kernel::resource::Cpu* cpu     = dynamic_cast<kernel::resource::Cpu*>(resource);
+    const kernel::resource::CpuImpl* cpu = dynamic_cast<kernel::resource::CpuImpl*>(resource);
 
     if (cpu != nullptr)
       resource_set_utilization("HOST", "speed_used", cpu->get_cname(), action.get_category(), value,
-                               action.get_last_update(), SIMIX_get_clock() - action.get_last_update());
+                               action.get_last_update(), simgrid_get_clock() - action.get_last_update());
 
     const kernel::resource::LinkImpl* link = dynamic_cast<kernel::resource::LinkImpl*>(resource);
 
     if (link != nullptr)
       resource_set_utilization("LINK", "bandwidth_used", link->get_cname(), action.get_category(), value,
-                               action.get_last_update(), SIMIX_get_clock() - action.get_last_update());
+                               action.get_last_update(), simgrid_get_clock() - action.get_last_update());
   }
 }
 

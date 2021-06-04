@@ -30,34 +30,24 @@ namespace s4u {
  */
 
 class XBT_PUBLIC Disk : public xbt::Extendable<Disk> {
-  kernel::resource::DiskImpl* const pimpl_;
-  std::string name_;
   friend Engine;
   friend Io;
   friend kernel::resource::DiskImpl;
 
-protected:
-#ifndef DOXYGEN
+  explicit Disk(kernel::resource::DiskImpl* pimpl) : pimpl_(pimpl) {}
   virtual ~Disk() = default;
-#endif
+
+  // The private implementation, that never changes
+  kernel::resource::DiskImpl* const pimpl_;
 
 public:
 #ifndef DOXYGEN
-  explicit Disk(const std::string& name, kernel::resource::DiskImpl* pimpl) : pimpl_(pimpl), name_(name) {}
+  kernel::resource::DiskImpl* get_impl() const { return pimpl_; }
 #endif
 
-  /** @brief Callback signal fired when a new Disk is created */
-  static xbt::signal<void(Disk&)> on_creation;
-  /** @brief Callback signal fired when a Disk is destroyed */
-  static xbt::signal<void(Disk const&)> on_destruction;
-  /** @brief Callback signal fired when a Disk's state changes */
-  static xbt::signal<void(Disk const&)> on_state_change;
-
-  /** @brief Retrieves the name of that disk as a C++ string */
-  Disk* set_name(std::string const& name);
-  std::string const& get_name() const { return name_; }
+  std::string const& get_name() const;
   /** @brief Retrieves the name of that disk as a C string */
-  const char* get_cname() const { return name_.c_str(); }
+  const char* get_cname() const;
 
   Disk* set_read_bandwidth(double read_bw);
   double get_read_bandwidth() const;
@@ -67,22 +57,33 @@ public:
 
   const std::unordered_map<std::string, std::string>* get_properties() const;
   const char* get_property(const std::string& key) const;
-  void set_property(const std::string&, const std::string& value);
+  Disk* set_property(const std::string&, const std::string& value);
+  Disk* set_properties(const std::unordered_map<std::string, std::string>& properties);
+
   Disk* set_host(Host* host);
   Host* get_host() const;
 
-  IoPtr io_init(sg_size_t size, s4u::Io::OpType type);
+  Disk* set_state_profile(kernel::profile::Profile* profile);
+  Disk* set_read_bandwidth_profile(kernel::profile::Profile* profile);
+  Disk* set_write_bandwidth_profile(kernel::profile::Profile* profile);
 
-  IoPtr read_async(sg_size_t size);
-  sg_size_t read(sg_size_t size);
+  IoPtr io_init(sg_size_t size, s4u::Io::OpType type) const;
 
-  IoPtr write_async(sg_size_t size);
-  sg_size_t write(sg_size_t size);
-  void seal();
+  IoPtr read_async(sg_size_t size) const;
+  sg_size_t read(sg_size_t size) const;
 
-#ifndef DOXYGEN
-  kernel::resource::DiskImpl* get_impl() const { return pimpl_; }
-#endif
+  IoPtr write_async(sg_size_t size) const;
+  sg_size_t write(sg_size_t size) const;
+
+  Disk* seal();
+
+  /* The signals */
+  /** @brief Callback signal fired when a new Disk is created */
+  static xbt::signal<void(Disk&)> on_creation;
+  /** @brief Callback signal fired when a Disk is destroyed */
+  static xbt::signal<void(Disk const&)> on_destruction;
+  /** @brief Callback signal fired when a Disk's state changes */
+  static xbt::signal<void(Disk const&)> on_state_change;
 };
 
 } // namespace s4u

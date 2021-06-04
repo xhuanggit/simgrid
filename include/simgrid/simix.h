@@ -45,15 +45,15 @@ XBT_PUBLIC void SIMIX_global_init(int* argc, char** argv);
 XBT_PUBLIC void SIMIX_set_maestro(void (*code)(void*), void* data);
 
 /* Simulation execution */
-XBT_PUBLIC void SIMIX_run();
-XBT_PUBLIC double SIMIX_get_clock();
+XBT_ATTRIB_DEPRECATED_v332("Please use EngineImpl:run()") XBT_PUBLIC void SIMIX_run();
+XBT_ATTRIB_DEPRECATED_v332("Please use simgrid_get_clock() or Engine::get_clock()") XBT_PUBLIC double SIMIX_get_clock();
 
-XBT_ATTRIB_DEPRECATED_v329("Please use simgrid::simix::Timer::set()") XBT_PUBLIC smx_timer_t
+XBT_ATTRIB_DEPRECATED_v329("Please use simgrid::kernel::timer::Timer::set()") XBT_PUBLIC smx_timer_t
     SIMIX_timer_set(double date, void (*function)(void*), void* arg);
-XBT_ATTRIB_DEPRECATED_v329("Please use simgrid::simix::Timer::remove()") XBT_PUBLIC
+XBT_ATTRIB_DEPRECATED_v329("Please use simgrid::kernel::timer::Timer::remove()") XBT_PUBLIC
     void SIMIX_timer_remove(smx_timer_t timer);
-XBT_ATTRIB_DEPRECATED_v329("Please use simgrid::simix::Timer::next()") XBT_PUBLIC double SIMIX_timer_next();
-XBT_ATTRIB_DEPRECATED_v329("Please use simgrid::simix::Timer::get_date()") XBT_PUBLIC
+XBT_ATTRIB_DEPRECATED_v329("Please use simgrid::kernel::timer::Timer::next()") XBT_PUBLIC double SIMIX_timer_next();
+XBT_ATTRIB_DEPRECATED_v329("Please use simgrid::kernel::timer::Timer::get_date()") XBT_PUBLIC
     double SIMIX_timer_get_date(smx_timer_t timer);
 
 XBT_ATTRIB_DEPRECATED_v329("Please use simix_global->display_all_actor_status()") XBT_PUBLIC
@@ -130,12 +130,6 @@ XBT_ATTRIB_DEPRECATED_v330("Please use s4u::Exec::test()") XBT_PUBLIC
 SG_BEGIN_DECL
 XBT_ATTRIB_DEPRECATED_v329("This function will be removed") void simcall_process_set_data(smx_actor_t process,
                                                                                           void* data);
-XBT_ATTRIB_DEPRECATED_v328("Please use sg_actor_suspend()") XBT_PUBLIC
-    void simcall_process_suspend(smx_actor_t process);
-
-XBT_ATTRIB_DEPRECATED_v328("Please use sg_actor_join()") XBT_PUBLIC
-    void simcall_process_join(smx_actor_t process, double timeout);
-
 XBT_ATTRIB_DEPRECATED_v329("Please use sg_actor_sleep_for()") XBT_PUBLIC
 #ifdef __cplusplus
     simgrid::kernel::activity::State

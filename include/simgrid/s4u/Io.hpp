@@ -20,37 +20,34 @@ namespace s4u {
  */
 
 class XBT_PUBLIC Io : public Activity_T<Io> {
+  friend kernel::activity::IoImpl;
+
+protected:
+  explicit Io(kernel::activity::IoImplPtr pimpl);
+
+  void complete(Activity::State state) override;
+
 public:
   enum class OpType { READ, WRITE };
-
-private:
-  Disk* disk_       = nullptr;
-  sg_size_t size_   = 0;
-  OpType type_      = OpType::READ;
-
-  Io();
-
-public:
-#ifndef DOXYGEN
-  friend Disk;    // Factory of IOs
-#endif
 
   static xbt::signal<void(Io const&)> on_start;
   static xbt::signal<void(Io const&)> on_completion;
 
   static IoPtr init();
   Io* start() override;
-  Io* wait() override;
-  Io* wait_for(double timeout) override;
-  Io* cancel() override;
+  /*! take a vector of s4u::IoPtr and return when one of them is finished.
+   * The return value is the rank of the first finished IoPtr. */
+  static int wait_any(std::vector<IoPtr>* ios) { return wait_any_for(ios, -1); }
+  /*! Same as wait_any, but with a timeout. If the timeout occurs, parameter last is returned.*/
+  static int wait_any_for(std::vector<IoPtr>* ios, double timeout);
 
   double get_remaining() const override;
   sg_size_t get_performed_ioops() const;
-  IoPtr set_disk(sg_disk_t disk);
+  IoPtr set_disk(const_sg_disk_t disk);
   IoPtr set_size(sg_size_t size);
   IoPtr set_op_type(OpType type);
 
-  bool is_assigned() const override { return disk_ != nullptr; }
+  bool is_assigned() const override;
 };
 
 } // namespace s4u

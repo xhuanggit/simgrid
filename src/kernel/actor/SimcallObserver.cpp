@@ -14,7 +14,39 @@ namespace simgrid {
 namespace kernel {
 namespace actor {
 
-std::string SimcallObserver::to_string(int /*time_considered*/) const
+bool SimcallObserver::depends(SimcallObserver* other)
+{
+  THROW_UNIMPLEMENTED;
+}
+/* Random is only dependent when issued by the same actor (ie, always independent) */
+bool RandomSimcall::depends(SimcallObserver* other)
+{
+  return get_issuer() == other->get_issuer();
+}
+bool MutexSimcall::depends(SimcallObserver* other)
+{
+  if (dynamic_cast<RandomSimcall*>(other) != nullptr)
+    return other->depends(this); /* Other is random, that is very permissive. Use that relation instead. */
+
+#if 0 /* This code is currently broken and shouldn't be used. We must implement asynchronous locks before */
+  MutexSimcall* that = dynamic_cast<MutexSimcall*>(other);
+  if (that == nullptr)
+    return true; // Depends on anything we don't know
+
+  /* Theorem 4.4.7: Any pair of synchronization actions of distinct actors concerning distinct mutexes are independent */
+  if (this->get_issuer() != that->get_issuer() && this->get_mutex() != that->get_mutex())
+    return false;
+
+  /* Theorem 4.4.8 An AsyncMutexLock is independent with a MutexUnlock of another actor */
+  if (((dynamic_cast<MutexLockSimcall*>(this) != nullptr && dynamic_cast<MutexUnlockSimcall*>(that)) ||
+       (dynamic_cast<MutexLockSimcall*>(that) != nullptr && dynamic_cast<MutexUnlockSimcall*>(this))) &&
+      get_issuer() != other->get_issuer())
+    return false;
+#endif
+  return true; // Depend on things we don't know for sure that they are independent
+}
+
+std::string SimcallObserver::to_string(int /*times_considered*/) const
 {
   return simgrid::xbt::string_printf("[(%ld)%s (%s)] ", issuer_->get_pid(), issuer_->get_host()->get_cname(),
                                      issuer_->get_cname());
@@ -27,9 +59,9 @@ std::string SimcallObserver::dot_label() const
   return xbt::string_printf("[(%ld)] ", issuer_->get_pid());
 }
 
-std::string RandomSimcall::to_string(int time_considered) const
+std::string RandomSimcall::to_string(int times_considered) const
 {
-  return SimcallObserver::to_string(time_considered) + "MC_RANDOM(" + std::to_string(time_considered) + ")";
+  return SimcallObserver::to_string(times_considered) + "MC_RANDOM(" + std::to_string(times_considered) + ")";
 }
 
 std::string RandomSimcall::dot_label() const
@@ -48,9 +80,9 @@ int RandomSimcall::get_max_consider() const
   return max_ - min_ + 1;
 }
 
-std::string MutexUnlockSimcall::to_string(int time_considered) const
+std::string MutexUnlockSimcall::to_string(int times_considered) const
 {
-  return SimcallObserver::to_string(time_considered) + "Mutex UNLOCK";
+  return SimcallObserver::to_string(times_considered) + "Mutex UNLOCK";
 }
 
 std::string MutexUnlockSimcall::dot_label() const
@@ -58,11 +90,12 @@ std::string MutexUnlockSimcall::dot_label() const
   return SimcallObserver::dot_label() + "Mutex UNLOCK";
 }
 
-std::string MutexLockSimcall::to_string(int time_considered) const
+std::string MutexLockSimcall::to_string(int times_considered) const
 {
-  std::string res = SimcallObserver::to_string(time_considered) + (blocking_ ? "Mutex LOCK" : "Mutex TRYLOCK");
-  res += "(locked = " + std::to_string(mutex_->is_locked());
-  res += ", owner = " + std::to_string(mutex_->get_owner() ? mutex_->get_owner()->get_pid() : -1);
+  auto mutex      = get_mutex();
+  std::string res = SimcallObserver::to_string(times_considered) + (blocking_ ? "Mutex LOCK" : "Mutex TRYLOCK");
+  res += "(locked = " + std::to_string(mutex->is_locked());
+  res += ", owner = " + std::to_string(mutex->get_owner() ? mutex->get_owner()->get_pid() : -1);
   res += ", sleeping = n/a)";
   return res;
 }
@@ -74,12 +107,12 @@ std::string MutexLockSimcall::dot_label() const
 
 bool MutexLockSimcall::is_enabled() const
 {
-  return not blocking_ || mutex_->get_owner() == nullptr || mutex_->get_owner() == get_issuer();
+  return not blocking_ || get_mutex()->get_owner() == nullptr || get_mutex()->get_owner() == get_issuer();
 }
 
-std::string ConditionWaitSimcall::to_string(int time_considered) const
+std::string ConditionWaitSimcall::to_string(int times_considered) const
 {
-  std::string res = SimcallObserver::to_string(time_considered) + "Condition WAIT";
+  std::string res = SimcallObserver::to_string(times_considered) + "Condition WAIT";
   res += "(" + (timeout_ == -1.0 ? "" : std::to_string(timeout_)) + ")";
   return res;
 }
@@ -99,9 +132,9 @@ bool ConditionWaitSimcall::is_enabled() const
   return true;
 }
 
-std::string SemAcquireSimcall::to_string(int time_considered) const
+std::string SemAcquireSimcall::to_string(int times_considered) const
 {
-  std::string res = SimcallObserver::to_string(time_considered) + "Sem ACQUIRE";
+  std::string res = SimcallObserver::to_string(times_considered) + "Sem ACQUIRE";
   res += "(" + (timeout_ == -1.0 ? "" : std::to_string(timeout_)) + ")";
   return res;
 }
@@ -121,9 +154,9 @@ bool SemAcquireSimcall::is_enabled() const
   return true;
 }
 
-std::string ExecutionWaitanySimcall::to_string(int time_considered) const
+std::string ExecutionWaitanySimcall::to_string(int times_considered) const
 {
-  std::string res = SimcallObserver::to_string(time_considered) + "Execution WAITANY";
+  std::string res = SimcallObserver::to_string(times_considered) + "Execution WAITANY";
   res += "(" + (timeout_ == -1.0 ? "" : std::to_string(timeout_)) + ")";
   return res;
 }
@@ -132,6 +165,19 @@ std::string ExecutionWaitanySimcall::dot_label() const
 {
   return SimcallObserver::dot_label() + "Execution WAITANY";
 }
+
+std::string IoWaitanySimcall::to_string(int times_considered) const
+{
+  std::string res = SimcallObserver::to_string(times_considered) + "I/O WAITANY";
+  res += "(" + (timeout_ == -1.0 ? "" : std::to_string(timeout_)) + ")";
+  return res;
+}
+
+std::string IoWaitanySimcall::dot_label() const
+{
+  return SimcallObserver::dot_label() + "I/O WAITANY";
+}
+
 } // namespace actor
 } // namespace kernel
 } // namespace simgrid

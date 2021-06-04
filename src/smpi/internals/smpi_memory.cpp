@@ -28,9 +28,8 @@
 
 XBT_LOG_NEW_DEFAULT_SUBCATEGORY(smpi_memory, smpi, "Memory layout support for SMPI");
 
-int smpi_loaded_page      = -1;
 char* smpi_data_exe_start = nullptr;
-int smpi_data_exe_size    = 0;
+size_t smpi_data_exe_size = 0;
 SmpiPrivStrategies smpi_privatize_global_variables;
 static void* smpi_data_exe_copy;
 
@@ -116,19 +115,18 @@ static void* asan_safe_memcpy(void* dest, void* src, size_t n)
  */
 int smpi_temp_shm_get()
 {
-  constexpr unsigned VAL_MASK = 0xffffffffUL;
-  static unsigned prev_val    = VAL_MASK;
+  constexpr unsigned INDEX_MASK = 0xffffffffUL;
+  static unsigned index         = INDEX_MASK;
   char shmname[32]; // cannot be longer than PSHMNAMLEN = 31 on macOS (shm_open raises ENAMETOOLONG otherwise)
   int fd;
 
-  for (unsigned i = (prev_val + 1) & VAL_MASK; i != prev_val; i = (i + 1) & VAL_MASK) {
-    snprintf(shmname, sizeof(shmname), "/smpi-buffer-%016x", i);
+  unsigned limit = index;
+  do {
+    index = (index + 1) & INDEX_MASK;
+    snprintf(shmname, sizeof(shmname), "/smpi-buffer-%016x", index);
     fd = shm_open(shmname, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
-    if (fd != -1 || errno != EEXIST) {
-      prev_val = i;
-      break;
-    }
-  }
+  } while (fd == -1 && errno == EEXIST && index != limit);
+
   if (fd < 0) {
     if (errno == EMFILE) {
       xbt_die("Impossible to create temporary file for memory mapping: %s\n\
@@ -159,46 +157,56 @@ Ask the Internet about tutorials on how to increase the files limit such as: htt
 void* smpi_temp_shm_mmap(int fd, size_t size)
 {
   struct stat st;
-  if (fstat(fd, &st) != 0)
-    xbt_die("Could not stat fd %d: %s", fd, strerror(errno));
-  if (static_cast<off_t>(size) > st.st_size && ftruncate(fd, static_cast<off_t>(size)) != 0)
-    xbt_die("Could not truncate fd %d to %zu: %s", fd, size, strerror(errno));
+  xbt_assert(fstat(fd, &st) == 0, "Could not stat fd %d: %s", fd, strerror(errno));
+  xbt_assert(static_cast<off_t>(size) <= st.st_size || ftruncate(fd, static_cast<off_t>(size)) == 0,
+             "Could not truncate fd %d to %zu: %s", fd, size, strerror(errno));
   void* mem = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-  if (mem == MAP_FAILED) {
-    xbt_die("Failed to map fd %d with size %zu: %s\n"
-            "If you are running a lot of ranks, you may be exceeding the amount of mappings allowed per process.\n"
-            "On Linux systems, change this value with sudo sysctl -w vm.max_map_count=newvalue (default value: 65536)\n"
-            "Please see "
-            "https://simgrid.org/doc/latest/Configuring_SimGrid.html#configuring-the-user-code-virtualization for more "
-            "information.",
-            fd, size, strerror(errno));
-  }
+  xbt_assert(
+      mem != MAP_FAILED,
+      "Failed to map fd %d with size %zu: %s\n"
+      "If you are running a lot of ranks, you may be exceeding the amount of mappings allowed per process.\n"
+      "On Linux systems, change this value with sudo sysctl -w vm.max_map_count=newvalue (default value: 65536)\n"
+      "Please see https://simgrid.org/doc/latest/Configuring_SimGrid.html#configuring-the-user-code-virtualization for "
+      "more information.",
+      fd, size, strerror(errno));
   return mem;
 }
 
 /** Map a given SMPI privatization segment (make an SMPI process active)
  *
  *  When doing a state restoration, the state of the restored variables  might not be consistent with the state of the
- *  virtual memory. In this case, we to change the data segment.
+ *  virtual memory. In this case, we have to change the data segment.
+ *
+ *  If 'addr' is not null, only switch if it's an address from the data segment.
+ *
+ *  Returns 'true' if the segment has to be switched (mmap privatization and 'addr' in data segment).
  */
-void smpi_switch_data_segment(simgrid::s4u::ActorPtr actor)
+bool smpi_switch_data_segment(simgrid::s4u::ActorPtr actor, const void* addr)
 {
-  if (smpi_loaded_page == actor->get_pid()) // no need to switch, we've already loaded the one we want
-    return;
+  if (smpi_cfg_privatization() != SmpiPrivStrategies::MMAP || smpi_data_exe_size == 0)
+    return false; // no need to switch
 
-  if (smpi_data_exe_size == 0) // no need to switch
-    return;
+  if (addr != nullptr &&
+      not(static_cast<const char*>(addr) >= smpi_data_exe_start &&
+          static_cast<const char*>(addr) < smpi_data_exe_start + smpi_data_exe_size))
+    return false; // no need to switch, addr is not concerned
+
+  static aid_t smpi_loaded_page = -1;
+  if (smpi_loaded_page == actor->get_pid()) // no need to switch, we've already loaded the one we want
+    return true;                            // return 'true' anyway
 
 #if HAVE_PRIVATIZATION
   // FIXME, cross-process support (mmap across process when necessary)
   XBT_DEBUG("Switching data frame to the one of process %ld", actor->get_pid());
   const simgrid::smpi::ActorExt* process = smpi_process_remote(actor);
   int current                     = process->privatized_region()->file_descriptor;
-  const void* tmp = mmap(TOPAGE(smpi_data_exe_start), smpi_data_exe_size, PROT_RW, MAP_FIXED | MAP_SHARED, current, 0);
-  if (tmp != TOPAGE(smpi_data_exe_start))
-    xbt_die("Couldn't map the new region (errno %d): %s", errno, strerror(errno));
+  xbt_assert(mmap(TOPAGE(smpi_data_exe_start), smpi_data_exe_size, PROT_RW, MAP_FIXED | MAP_SHARED, current, 0) ==
+                 TOPAGE(smpi_data_exe_start),
+             "Couldn't map the new region (errno %d): %s", errno, strerror(errno));
   smpi_loaded_page = actor->get_pid();
 #endif
+
+  return true;
 }
 
 /**
@@ -213,7 +221,7 @@ void smpi_backup_global_memory_segment()
   initial_vm_map.clear();
   initial_vm_map.shrink_to_fit();
 
-  XBT_DEBUG("bss+data segment found : size %d starting at %p", smpi_data_exe_size, smpi_data_exe_start);
+  XBT_DEBUG("bss+data segment found : size %zu starting at %p", smpi_data_exe_size, smpi_data_exe_start);
 
   if (smpi_data_exe_size == 0) { // no need to do anything as global variables don't exist
     smpi_privatize_global_variables = SmpiPrivStrategies::NONE;

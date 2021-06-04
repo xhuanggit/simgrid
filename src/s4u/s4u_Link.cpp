@@ -5,6 +5,7 @@
 
 #include <algorithm>
 
+#include "simgrid/Exception.hpp"
 #include "simgrid/s4u/Engine.hpp"
 #include "simgrid/s4u/Link.hpp"
 #include "simgrid/sg_config.hpp"
@@ -13,6 +14,7 @@
 #include "src/surf/network_interface.hpp"
 #include "src/surf/network_wifi.hpp"
 #include "xbt/log.h"
+#include "xbt/parse_units.hpp"
 
 namespace simgrid {
 
@@ -67,6 +69,18 @@ Link* Link::set_latency(double value)
   return this;
 }
 
+Link* Link::set_latency(const std::string& value)
+{
+  double d_value = 0.0;
+  try {
+    d_value = xbt_parse_get_time("", 0, value, "");
+  } catch (const simgrid::ParseError&) {
+    throw std::invalid_argument(std::string("Impossible to set latency for link: ") + get_name() +
+                                std::string(". Invalid value: ") + value);
+  }
+  return set_latency(d_value);
+}
+
 double Link::get_bandwidth() const
 {
   return this->pimpl_->get_bandwidth();
@@ -78,6 +92,15 @@ Link* Link::set_bandwidth(double value)
   return this;
 }
 
+Link* Link::set_sharing_policy(Link::SharingPolicy policy)
+{
+  if (policy == SharingPolicy::SPLITDUPLEX)
+    throw std::invalid_argument(std::string("Impossible to set split-duplex for the link: ") + get_name() +
+                                std::string(". You should create a link-up and link-down to emulate this behavior"));
+
+  kernel::actor::simcall([this, policy] { pimpl_->set_sharing_policy(policy); });
+  return this;
+}
 Link::SharingPolicy Link::get_sharing_policy() const
 {
   return this->pimpl_->get_sharing_policy();
@@ -85,10 +108,8 @@ Link::SharingPolicy Link::get_sharing_policy() const
 
 void Link::set_host_wifi_rate(const s4u::Host* host, int level) const
 {
-  xbt_assert(pimpl_->get_sharing_policy() == Link::SharingPolicy::WIFI, "Link %s does not seem to be a wifi link.",
-             get_cname());
   auto* wlink = dynamic_cast<kernel::resource::NetworkWifiLink*>(pimpl_);
-  xbt_assert(wlink != nullptr, "Cannot convert link %s into a wifi link.", get_cname());
+  xbt_assert(wlink != nullptr, "Link %s does not seem to be a wifi link.", get_cname());
   wlink->set_host_rate(host, level);
 }
 
@@ -105,9 +126,10 @@ void Link::turn_off()
 {
   kernel::actor::simcall([this]() { this->pimpl_->turn_off(); });
 }
-void Link::seal()
+Link* Link::seal()
 {
   kernel::actor::simcall([this]() { this->pimpl_->seal(); });
+  return this;
 }
 
 bool Link::is_on() const
@@ -242,7 +264,7 @@ void sg_link_data_set(sg_link_t link, void* data) // XBT_ATTRIB_DEPRECATED_v330
   sg_link_set_data(link, data);
 }
 
-int sg_link_count()
+size_t sg_link_count()
 {
   return simgrid::s4u::Engine::get_instance()->get_link_count();
 }

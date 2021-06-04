@@ -12,7 +12,6 @@
 
 #include <xbt/asserts.h>
 #include <xbt/log.h>
-#include <xbt/misc.h>
 
 #include <simgrid/config.h>
 
@@ -21,31 +20,6 @@
 #include <stdarg.h>             /* va_list */
 
 SG_BEGIN_DECL
-
-/* They live in asserts.h, but need to be declared before this module.
-   double declaration to cut dependency cycle */
-/**
- * @addtogroup XBT_error
- *
- * @{
- */
-/** @brief Kill the program in silence */
-XBT_ATTRIB_NORETURN XBT_PUBLIC void xbt_abort(void);
-
-/**
- * @brief Kill the program with an error message
- * @param ... a format string and its arguments
- *
- * Things are so messed up that the only thing to do now, is to stop the program.
- *
- * The message is handled by a CRITICAL logging request, and may consist of a format string with arguments.
- */
-#define xbt_die(...)                            \
-  do {                                          \
-    XBT_CCRITICAL(xbt, __VA_ARGS__);            \
-    xbt_abort();                                \
-  } while (0)
-/** @} */
 
 #ifdef XBT_LOG_LOCALLY_DEFINE_XBT_CHANNEL
 XBT_LOG_NEW_CATEGORY(xbt, "All XBT categories (simgrid toolbox)");
@@ -66,8 +40,7 @@ static XBT_ALWAYS_INLINE char *xbt_strdup(const char *s) {
   char *res = NULL;
   if (s) {
     res = strdup(s);
-    if (!res)
-      xbt_die("memory allocation error (strdup returned NULL)");
+    xbt_assert(res, "memory allocation error (strdup returned NULL)");
   }
   return res;
 }
@@ -76,8 +49,7 @@ static XBT_ALWAYS_INLINE char *xbt_strdup(const char *s) {
     @hideinitializer */
 static XBT_ALWAYS_INLINE void *xbt_malloc(size_t n) {
   void* res = malloc(n);
-  if (!res)
-    xbt_die("Memory allocation of %lu bytes failed", (unsigned long)n);
+  xbt_assert(res, "Memory allocation of %lu bytes failed", (unsigned long)n);
   return res;
 }
 
@@ -85,8 +57,7 @@ static XBT_ALWAYS_INLINE void *xbt_malloc(size_t n) {
     @hideinitializer */
 static XBT_ALWAYS_INLINE void *xbt_malloc0(size_t n) {
   void* res = calloc(n, 1);
-  if (!res)
-    xbt_die("Memory callocation of %lu bytes failed", (unsigned long)n);
+  xbt_assert(res, "Memory callocation of %lu bytes failed", (unsigned long)n);
   return res;
 }
 
@@ -97,8 +68,7 @@ static XBT_ALWAYS_INLINE void *xbt_realloc(void *p, size_t s) {
   if (s) {
     if (p) {
       res = realloc(p, s);
-      if (!res)
-        xbt_die("memory (re)allocation of %lu bytes failed", (unsigned long)s);
+      xbt_assert(res, "memory (re)allocation of %lu bytes failed", (unsigned long)s);
     } else {
       res = xbt_malloc(s);
     }

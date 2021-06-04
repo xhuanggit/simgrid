@@ -39,7 +39,7 @@ SG_BEGIN_DECL
 #define MPI_MAX_PROCESSOR_NAME 100
 #define MPI_MAX_NAME_STRING    100
 #define MPI_MAX_ERROR_STRING   100
-#define MPI_MAX_DATAREP_STRIN  100
+#define MPI_MAX_DATAREP_STRING 128
 #define MPI_MAX_INFO_KEY       100
 #define MPI_MAX_INFO_VAL       100
 #define MPI_MAX_OBJECT_NAME    100
@@ -153,6 +153,7 @@ enum ERROR_ENUM {
 #define MPI_TAG_LB           -6
 #define MPI_UNIVERSE_SIZE    -7
 #define MPI_LASTUSEDCODE     -8
+#define MPI_KEYVAL_INVALID   -9
 
 #define MPI_MODE_NOSTORE 0x1
 #define MPI_MODE_NOPUT 0x2
@@ -160,7 +161,6 @@ enum ERROR_ENUM {
 #define MPI_MODE_NOSUCCEED 0x8
 #define MPI_MODE_NOCHECK 0x10
 
-#define MPI_KEYVAL_INVALID 0
 #define MPI_NULL_COPY_FN NULL
 #define MPI_NULL_DELETE_FN NULL
 #define MPI_ERR_LASTCODE 74
@@ -206,7 +206,6 @@ enum ERROR_ENUM {
 #define MPI_SEEK_SET            600
 #define MPI_SEEK_CUR            602
 #define MPI_SEEK_END            604
-#define MPI_MAX_DATAREP_STRING  128
 
 #define MPI_WIN_BASE -1
 #define MPI_WIN_SIZE -2
@@ -1142,7 +1141,6 @@ XBT_PUBLIC MPI_Comm smpi_process_comm_self();
 XBT_PUBLIC MPI_Info smpi_process_info_env();
 XBT_PUBLIC void* smpi_process_get_user_data();
 XBT_PUBLIC void smpi_process_set_user_data(void*);
-XBT_PUBLIC void smpi_init_options();
 
 XBT_PUBLIC void smpi_execute_flops(double flops);
 XBT_PUBLIC void smpi_execute_flops_benched(double flops);

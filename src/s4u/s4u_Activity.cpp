@@ -5,9 +5,12 @@
 
 #include "xbt/log.h"
 
+#include "simgrid/Exception.hpp"
 #include "simgrid/s4u/Activity.hpp"
 #include "simgrid/s4u/Engine.hpp"
 #include "src/kernel/activity/ActivityImpl.hpp"
+#include "src/kernel/actor/ActorImpl.hpp"
+#include "src/kernel/actor/SimcallObserver.hpp"
 
 XBT_LOG_EXTERNAL_CATEGORY(s4u);
 XBT_LOG_NEW_DEFAULT_SUBCATEGORY(s4u_activity, s4u, "S4U activities");
@@ -22,6 +25,20 @@ void Activity::wait_until(double time_limit)
     wait_for(time_limit - now);
 }
 
+Activity* Activity::wait_for(double timeout)
+{
+  if (state_ == State::INITED)
+    vetoable_start();
+
+  kernel::actor::ActorImpl* issuer = kernel::actor::ActorImpl::self();
+  kernel::actor::ActivityWaitSimcall observer{issuer, pimpl_.get(), timeout};
+  if (kernel::actor::simcall_blocking(
+          [&observer] { observer.get_activity()->wait_for(observer.get_issuer(), observer.get_timeout()); }, &observer))
+    throw TimeoutException(XBT_THROW_POINT, "Timeouted");
+  complete(State::FINISHED);
+  return this;
+}
+
 bool Activity::test()
 {
   xbt_assert(state_ == State::INITED || state_ == State::STARTED || state_ == State::STARTING ||
@@ -34,12 +51,21 @@ bool Activity::test()
     this->vetoable_start();
 
   if (kernel::actor::simcall([this] { return this->get_impl()->test(); })) {
-    state_ = State::FINISHED;
-    this->release_dependencies();
+    complete(State::FINISHED);
     return true;
   }
 
   return false;
+}
+
+Activity* Activity::cancel()
+{
+  kernel::actor::simcall([this] {
+    XBT_HERE();
+    pimpl_->cancel();
+  });
+  complete(State::CANCELED);
+  return this;
 }
 
 Activity* Activity::suspend()

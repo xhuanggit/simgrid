@@ -217,12 +217,13 @@ int open_vm(pid_t pid, int flags)
 
 RemoteProcess::RemoteProcess(pid_t pid) : AddressSpace(this), pid_(pid), running_(true) {}
 
-void RemoteProcess::init(void* mmalloc_default_mdp, void* maxpid, void* actors, void* dead_actors)
+void RemoteProcess::init(xbt_mheap_t mmalloc_default_mdp, unsigned long* maxpid, xbt_dynar_t actors,
+                         xbt_dynar_t dead_actors)
 {
-  this->heap_address      = mmalloc_default_mdp;
-  this->maxpid_addr_      = maxpid;
-  this->actors_addr_      = actors;
-  this->dead_actors_addr_ = dead_actors;
+  this->heap_address      = remote(mmalloc_default_mdp);
+  this->maxpid_addr_      = remote(maxpid);
+  this->actors_addr_      = remote(actors);
+  this->dead_actors_addr_ = remote(dead_actors);
 
   this->memory_map_ = simgrid::xbt::get_memory_map(this->pid_);
   this->init_memory_map_info();
@@ -263,7 +264,7 @@ void RemoteProcess::refresh_heap()
   // Read/dereference/refresh the std_heap pointer:
   if (not this->heap)
     this->heap = std::make_unique<s_xbt_mheap_t>();
-  this->read_bytes(this->heap.get(), sizeof(mdesc), remote(this->heap_address));
+  this->read(this->heap.get(), this->heap_address);
   this->cache_flags_ |= RemoteProcess::cache_heap;
 }
 
@@ -290,14 +291,12 @@ void RemoteProcess::init_memory_map_info()
   XBT_DEBUG("Get debug information ...");
   this->maestro_stack_start_ = nullptr;
   this->maestro_stack_end_   = nullptr;
-  this->object_infos.resize(0);
+  this->object_infos.clear();
   this->binary_info = nullptr;
 
   std::vector<simgrid::xbt::VmMap> const& maps = this->memory_map_;
 
   const char* current_name = nullptr;
-
-  this->object_infos.clear();
 
   for (size_t i = 0; i < maps.size(); i++) {
     simgrid::xbt::VmMap const& reg = maps[i];
@@ -444,8 +443,8 @@ std::string RemoteProcess::read_string(RemotePtr<char> address) const
 
 void* RemoteProcess::read_bytes(void* buffer, std::size_t size, RemotePtr<void> address, ReadOptions /*options*/) const
 {
-  if (pread_whole(this->memory_file, buffer, size, (size_t)address.address()) < 0)
-    xbt_die("Read at %p from process %lli failed", (void*)address.address(), (long long)this->pid_);
+  xbt_assert(pread_whole(this->memory_file, buffer, size, (size_t)address.address()) != -1,
+             "Read at %p from process %lli failed", (void*)address.address(), (long long)this->pid_);
   return buffer;
 }
 
@@ -457,8 +456,8 @@ void* RemoteProcess::read_bytes(void* buffer, std::size_t size, RemotePtr<void> 
  */
 void RemoteProcess::write_bytes(const void* buffer, size_t len, RemotePtr<void> address) const
 {
-  if (pwrite_whole(this->memory_file, buffer, len, (size_t)address.address()) < 0)
-    xbt_die("Write to process %lli failed", (long long)this->pid_);
+  xbt_assert(pwrite_whole(this->memory_file, buffer, len, (size_t)address.address()) != -1,
+             "Write to process %lli failed", (long long)this->pid_);
 }
 
 static void zero_buffer_init(const void** zero_buffer, size_t zero_buffer_size)
@@ -566,19 +565,6 @@ void RemoteProcess::dump_stack() const
 
   _UPT_destroy(context);
   unw_destroy_addr_space(as);
-}
-
-unsigned long RemoteProcess::get_maxpid() const
-{
-  unsigned long maxpid;
-  this->read_bytes(&maxpid, sizeof(unsigned long), remote(maxpid_addr_));
-  return maxpid;
-}
-
-void RemoteProcess::get_actor_vectors(RemotePtr<s_xbt_dynar_t>& actors, RemotePtr<s_xbt_dynar_t>& dead_actors)
-{
-  actors      = remote(static_cast<s_xbt_dynar_t*>(actors_addr_));
-  dead_actors = remote(static_cast<s_xbt_dynar_t*>(dead_actors_addr_));
 }
 } // namespace mc
 } // namespace simgrid

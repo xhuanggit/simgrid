@@ -150,6 +150,7 @@ Existing Configuration Items
 - **smpi/cpu-threshold:** :ref:`cfg=smpi/cpu-threshold`
 - **smpi/display-allocs:** :ref:`cfg=smpi/display-allocs`
 - **smpi/display-timing:** :ref:`cfg=smpi/display-timing`
+- **smpi/finalization-barrier:** :ref:`cfg=smpi/finalization-barrier`
 - **smpi/grow-injected-times:** :ref:`cfg=smpi/grow-injected-times`
 - **smpi/host-speed:** :ref:`cfg=smpi/host-speed`
 - **smpi/IB-penalty-factors:** :ref:`cfg=smpi/IB-penalty-factors`
@@ -347,7 +348,6 @@ and you should use the last one, which is the maximal size.
    cat /proc/sys/net/ipv4/tcp_rmem # gives the sender window
    cat /proc/sys/net/ipv4/tcp_wmem # gives the receiver window
 
-.. _cfg=smpi/IB-penalty-factors:
 .. _cfg=network/bandwidth-factor:
 .. _cfg=network/latency-factor:
 .. _cfg=network/weight-S:
@@ -370,14 +370,62 @@ exchange.  By default SMPI uses factors computed on the Stampede
 Supercomputer at TACC, with optimal deployment of processes on
 nodes. Again, only hardcore experts should bother about this fact.
 
-InfiniBand network behavior can be modeled through 3 parameters
-``smpi/IB-penalty-factors:"βe;βs;γs"``, as explained in `this PhD
-thesis
-<http://mescal.imag.fr/membres/jean-marc.vincent/index.html/PhD/Vienne.pdf>`_.
 
 .. todo:: This section should be rewritten, and actually explain the
 	  options network/bandwidth-factor, network/latency-factor,
 	  network/weight-S.
+
+.. _cfg=smpi/IB-penalty-factors:
+
+Infiniband model
+^^^^^^^^^^^^^^^^
+
+InfiniBand network behavior can be modeled through 3 parameters
+``smpi/IB-penalty-factors:"βe;βs;γs"``, as explained in `this PhD
+thesis
+<http://mescal.imag.fr/membres/jean-marc.vincent/index.html/PhD/Vienne.pdf>`_ (in French)
+or more concisely in `this paper <https://hal.inria.fr/hal-00953618/document>`_,
+even if that paper does only describe models for myrinet and ethernet.
+You can see in Fig 2 some results for Infiniband, for example. This model
+may be outdated by now for modern infiniband, anyway, so a new
+validation would be good. 
+
+The three paramaters are defined as follows:
+
+- βs: penalty factor for outgoing messages, computed by running a simple send to
+  two nodes and checking slowdown compared to a single send to one node,
+  dividing by 2
+- βe: penalty factor for ingoing messages, same computation method but with one
+  node receiving several messages
+- γr: slowdown factor when communication buffer memory is saturated. It needs a
+  more complicated pattern to run in order to be computed (5.3 in the thesis,
+  page 107), and formula in the end is γr = time(c)/(3×βe×time(ref)), where
+  time(ref) is the time of a single comm with no contention).
+
+Once these values are computed, a penalty is assessed for each message (this is
+the part implemented in the simulator) as shown page 106 of the thesis. Here is
+a simple translation of this text. First, some notations:
+
+- ∆e(e) which corresponds to the incoming degree of node e, that is to say the number of communications having as destination node e.
+- ∆s (s) which corresponds to the degree outgoing from node s, that is to say the number of communications sent by node s.
+- Φ (e) which corresponds to the number of communications destined for the node e but coming from a different node.
+- Ω (s, e) which corresponds to the number of messages coming from node s to node e. If node e only receives communications from different nodes then Φ (e) = ∆e (e). On the other hand if, for example, there are three messages coming from node s and going from node e then Φ (e) 6 = ∆e (e) and Ω (s, e) = 3
+
+To determine the penalty for a communication, two values need to be calculated. First, the penalty caused by the conflict in transmission, noted ps.
+
+
+- if ∆s (i) = 1 then ps = 1. 
+- if ∆s (i) ≥ 2 and ∆e (i) ≥ 3 then ps = ∆s (i) × βs × γr
+- else, ps = ∆s (i) × βs 
+
+
+Then,  the penalty caused by the conflict in reception (noted pe) should be computed as follows:
+
+- if ∆e (i) = 1 then pe = 1
+- else, pe = Φ (e) × βe × Ω (s, e) 
+
+Finally, the penalty associated with the communication is:
+p = max (ps ∈ s, pe)
 
 .. _cfg=network/crosstraffic:
 
@@ -646,11 +694,11 @@ graphviz dot tool to generate a corresponding graphical representation.
 Exploration Depth Limit
 .......................
 
-The ``model-checker/max-depth`` can set the maximum depth of the
+The ``model-check/max-depth`` can set the maximum depth of the
 exploration graph of the model checker. If this limit is reached, a
 logging message is sent and the results might not be exact.
 
-By default, there is no depth limit.
+By default, the exploration is limited to the depth of 1000.
 
 .. _cfg=model-check/timeout:
 
@@ -1082,6 +1130,7 @@ https://framagit.org/simgrid/platform-calibration/
 https://simgrid.org/contrib/smpi-saturation-doc.html
 
 .. _cfg=smpi/display-timing:
+
 Reporting Simulation Time
 .........................
 
@@ -1099,8 +1148,9 @@ in application code and in SMPI internals, to provide hints about the
 need to use sampling to reduce simulation time.
 
 .. _cfg=smpi/display-allocs:
+
 Reporting memory allocations
-.........................
+............................
 
 **Option** ``smpi/display-allocs`` **Default:** 0 (false)
 
@@ -1258,6 +1308,22 @@ Each collective operation can be manually selected with a
 
 .. TODO:: All available collective algorithms will be made available
           via the ``smpirun --help-coll`` command.
+
+Add a barrier in MPI_Finalize
+.............................
+
+.. _cfg=smpi/finalization-barrier:
+
+**Option** ``smpi/finalization-barrier`` **default:** off
+
+By default, SMPI processes are destroyed as soon as soon as their code ends,
+so after a successful MPI_Finalize call returns. In some rare cases, some data
+might have been attached to MPI objects still active in the remaining processes,
+and can be destroyed eagerly by the finished process.
+If your code shows issues at finalization, such as segmentation fault, triggering
+this option will add an explicit MPI_Barrier(MPI_COMM_WORLD) call inside the
+MPI_Finalize, so that all processes will terminate at almost the same point.
+It might affect the total timing by the cost of a barrier.
 
 .. _cfg=smpi/iprobe:
 
@@ -1457,8 +1523,9 @@ Then, you can pass the option
 actually activate the huge page support in shared mallocs.
 
 .. _cfg=smpi/auto-shared-malloc-thresh:
+
 Automatically share allocations
-.........................
+...............................
 
 **Option** ``smpi/auto-shared-malloc-thresh:`` **Default:** 0 (false)
    This value in bytes represents the size above which all allocations

@@ -30,7 +30,8 @@ VirtualMachine::VirtualMachine(const std::string& name, s4u::Host* physical_host
 }
 
 VirtualMachine::VirtualMachine(const std::string& name, s4u::Host* physical_host, int core_amount, size_t ramsize)
-    : Host(name), pimpl_vm_(new vm::VirtualMachineImpl(this, physical_host, core_amount, ramsize))
+    : Host(new vm::VirtualMachineImpl(name, this, physical_host, core_amount, ramsize))
+    , pimpl_vm_(dynamic_cast<vm::VirtualMachineImpl*>(Host::get_impl()))
 {
   XBT_DEBUG("Create VM %s", get_cname());
 
@@ -42,20 +43,22 @@ VirtualMachine::VirtualMachine(const std::string& name, s4u::Host* physical_host
   for (int i = 0; i < physical_host->get_pstate_count(); i++)
     speeds.push_back(physical_host->get_pstate_speed(i));
 
-  physical_host->get_netpoint()->get_englobing_zone()->get_cpu_vm_model()->create_cpu(this, speeds)->set_core_count(core_amount)->seal();
+  physical_host->get_netpoint()
+      ->get_englobing_zone()
+      ->get_cpu_vm_model()
+      ->create_cpu(this, speeds)
+      ->set_core_count(core_amount)
+      ->seal();
+
   if (physical_host->get_pstate() != 0)
     set_pstate(physical_host->get_pstate());
 
-  // Real hosts are (only) created through NetZone::create_host(), and this where the on_creation signal is fired.
-  // VMs are created directly, thus firing the signal here. The right solution is probably to separate Host and VM.
-  simgrid::s4u::Host::on_creation(*this);
+  seal(); // seal this host
 }
 
 VirtualMachine::~VirtualMachine()
 {
   on_destruction(*this);
-
-  XBT_DEBUG("destroy %s", get_cname());
 
   /* Don't free these things twice: they are the ones of my physical host */
   set_netpoint(nullptr);
@@ -65,34 +68,30 @@ void VirtualMachine::start()
 {
   on_start(*this);
 
-  kernel::actor::simcall([this]() {
-    vm::VmHostExt::ensureVmExtInstalled();
+  vm::VmHostExt::ensureVmExtInstalled();
 
+  kernel::actor::simcall([this]() {
     Host* pm = this->pimpl_vm_->get_physical_host();
     if (pm->extension<vm::VmHostExt>() == nullptr)
       pm->extension_set(new vm::VmHostExt());
 
-    long pm_ramsize   = pm->extension<vm::VmHostExt>()->ramsize;
-    int pm_overcommit = pm->extension<vm::VmHostExt>()->overcommit;
-    long vm_ramsize   = this->get_ramsize();
-
-    if (pm_ramsize && not pm_overcommit) { /* Only verify that we don't overcommit on need */
+    size_t pm_ramsize = pm->extension<vm::VmHostExt>()->ramsize;
+    if (pm_ramsize && not pm->extension<vm::VmHostExt>()->overcommit) { /* Need to verify that we don't overcommit */
       /* Retrieve the memory occupied by the VMs on that host. Yep, we have to traverse all VMs of all hosts for that */
-      long total_ramsize_of_vms = 0;
+      size_t total_ramsize_of_vms = 0;
       for (VirtualMachine* const& ws_vm : vm::VirtualMachineImpl::allVms_)
         if (pm == ws_vm->get_pm())
           total_ramsize_of_vms += ws_vm->get_ramsize();
 
-      if (vm_ramsize > pm_ramsize - total_ramsize_of_vms) {
-        XBT_WARN("cannot start %s@%s due to memory shortage: vm_ramsize %ld, free %ld, pm_ramsize %ld (bytes).",
-                 this->get_cname(), pm->get_cname(), vm_ramsize, pm_ramsize - total_ramsize_of_vms, pm_ramsize);
+      if (total_ramsize_of_vms + get_ramsize() > pm_ramsize) {
+        XBT_WARN("cannot start %s@%s due to memory shortage: get_ramsize() %zu, free %zu, pm_ramsize %zu (bytes).",
+                 get_cname(), pm->get_cname(), get_ramsize(), pm_ramsize - total_ramsize_of_vms, pm_ramsize);
         throw VmFailureException(XBT_THROW_POINT,
                                  xbt::string_printf("Memory shortage on host '%s', VM '%s' cannot be started",
-                                                    pm->get_cname(), this->get_cname()));
+                                                    pm->get_cname(), get_cname()));
       }
     }
-
-    this->pimpl_vm_->set_state(VirtualMachine::state::RUNNING);
+    this->pimpl_vm_->set_state(State::RUNNING);
   });
 
   on_started(*this);
@@ -120,11 +119,28 @@ void VirtualMachine::shutdown()
 
 void VirtualMachine::destroy()
 {
-  /* First, terminate all processes on the VM if necessary */
-  shutdown();
+  auto destroy_code = [this]() {
+    /* First, terminate all processes on the VM if necessary */
+    shutdown();
 
-  /* Then, destroy the VM object */
-  Host::destroy();
+    XBT_DEBUG("destroy %s", get_cname());
+
+    /* Then, destroy the VM object */
+    kernel::actor::simcall([this]() {
+      get_impl()->destroy();
+      delete this;
+    });
+  };
+
+  if (this_actor::get_host() == this) {
+    XBT_VERB("Launch another actor on physical host %s to destroy my own VM: %s", get_pm()->get_cname(), get_cname());
+    simgrid::s4u::Actor::create(get_cname() + std::string("-destroy"), get_pm(), destroy_code);
+    simgrid::s4u::this_actor::yield();
+    XBT_CRITICAL("I should be dead now!");
+    DIE_IMPOSSIBLE;
+  }
+
+  destroy_code();
 }
 
 simgrid::s4u::Host* VirtualMachine::get_pm() const
@@ -138,7 +154,7 @@ VirtualMachine* VirtualMachine::set_pm(simgrid::s4u::Host* pm)
   return this;
 }
 
-VirtualMachine::state VirtualMachine::get_state() const
+VirtualMachine::State VirtualMachine::get_state() const
 {
   return kernel::actor::simcall([this]() { return pimpl_vm_->get_state(); });
 }
@@ -185,8 +201,8 @@ VirtualMachine* VirtualMachine::set_bound(double bound)
   return this;
 }
 
-} // namespace simgrid
 } // namespace s4u
+} // namespace simgrid
 
 /* **************************** Public C interface *************************** */
 
@@ -234,19 +250,19 @@ void sg_vm_set_bound(sg_vm_t vm, double bound)
 /** @brief Returns whether the given VM has just created, not running. */
 int sg_vm_is_created(const_sg_vm_t vm)
 {
-  return vm->get_state() == simgrid::s4u::VirtualMachine::state::CREATED;
+  return vm->get_state() == simgrid::s4u::VirtualMachine::State::CREATED;
 }
 
 /** @brief Returns whether the given VM is currently running */
 int sg_vm_is_running(const_sg_vm_t vm)
 {
-  return vm->get_state() == simgrid::s4u::VirtualMachine::state::RUNNING;
+  return vm->get_state() == simgrid::s4u::VirtualMachine::State::RUNNING;
 }
 
 /** @brief Returns whether the given VM is currently suspended, not running. */
 int sg_vm_is_suspended(const_sg_vm_t vm)
 {
-  return vm->get_state() == simgrid::s4u::VirtualMachine::state::SUSPENDED;
+  return vm->get_state() == simgrid::s4u::VirtualMachine::State::SUSPENDED;
 }
 
 /** @brief Start a vm (i.e., boot the guest operating system)
@@ -280,12 +296,13 @@ void sg_vm_resume(sg_vm_t vm)
 /** @brief Immediately kills all processes within the given VM.
  *
  @beginrst
- 
+
  The memory allocated by these actors is leaked, unless you used :cpp:func:`simgrid::s4u::Actor::on_exit`.
-  
+
  @endrst
- * 
- * No extra delay occurs by default. You may let your actor sleep by a specific amount to simulate any extra delay that you want.
+ *
+ * No extra delay occurs by default. You may let your actor sleep by a specific amount to simulate any extra delay that
+ you want.
  */
 void sg_vm_shutdown(sg_vm_t vm)
 {

@@ -9,6 +9,7 @@
 #include "src/internal_config.h" // HAVE_SMPI
 #if HAVE_SMPI
 #include "smpi/smpi.h"
+#include "src/smpi/include/private.hpp"
 #endif
 #include "src/mc/mc_private.hpp"
 #include "src/mc/mc_state.hpp"
@@ -69,8 +70,7 @@ Session::Session(const std::function<void()>& code)
   // between the model-checker process (ourselves) and the model-checked
   // process:
   int sockets[2];
-  int res = socketpair(AF_LOCAL, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, sockets);
-  xbt_assert(res != -1, "Could not create socketpair");
+  xbt_assert(socketpair(AF_LOCAL, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, sockets) != -1, "Could not create socketpair");
 
   pid_t pid = fork();
   xbt_assert(pid >= 0, "Could not fork model-checked process");
@@ -144,7 +144,8 @@ void Session::close()
 
 bool Session::actor_is_enabled(aid_t pid) const
 {
-  s_mc_message_actor_enabled_t msg{};
+  s_mc_message_actor_enabled_t msg;
+  memset(&msg, 0, sizeof msg);
   msg.type = simgrid::mc::MessageType::ACTOR_ENABLED;
   msg.aid  = pid;
   model_checker_->channel().send(msg);

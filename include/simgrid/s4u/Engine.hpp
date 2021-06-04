@@ -27,6 +27,8 @@ class XBT_PUBLIC Engine {
   friend simgrid::kernel::EngineImpl;
 
 public:
+  /** Constructor, taking only the name of your main function */
+  explicit Engine(std::string name);
   /** Constructor, taking the command line parameters of your main function */
   explicit Engine(int* argc, char** argv);
   /* Currently, only one instance is allowed to exist. This is why you can't copy or move it */
@@ -85,6 +87,7 @@ public:
 
 protected:
 #ifndef DOXYGEN
+  friend surf::HostImpl;
   friend Host;
   friend Link;
   friend Disk;
@@ -118,12 +121,21 @@ public:
   Link* link_by_name(const std::string& name) const;
   Link* link_by_name_or_null(const std::string& name) const;
 
+  Mailbox* mailbox_by_name_or_create(const std::string& name) const;
+
   size_t get_actor_count() const;
   std::vector<ActorPtr> get_all_actors() const;
   std::vector<ActorPtr> get_filtered_actors(const std::function<bool(ActorPtr)>& filter) const;
 
   std::vector<kernel::routing::NetPoint*> get_all_netpoints() const;
   kernel::routing::NetPoint* netpoint_by_name_or_null(const std::string& name) const;
+  /**
+   * @brief Get netpoint by its name
+   *
+   * @param name Netpoint name
+   * @throw std::invalid_argument if netpoint doesn't exist
+   */
+  kernel::routing::NetPoint* netpoint_by_name(const std::string& name) const;
 
   NetZone* get_netzone_root() const;
   void set_netzone_root(const NetZone* netzone);
@@ -191,6 +203,7 @@ public:
 private:
   kernel::EngineImpl* const pimpl;
   static Engine* instance_;
+  void initialize(int* argc, char** argv);
 };
 
 #ifndef DOXYGEN /* Internal use only, no need to expose it */

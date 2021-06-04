@@ -116,8 +116,7 @@ protected:
    **/
   void resolve()
   {
-    if (status_ != FutureStatus::ready)
-      xbt_die("Deadlock: this future is not ready");
+    xbt_assert(status_ == FutureStatus::ready, "Deadlock: this future is not ready");
     status_ = FutureStatus::done;
     if (exception_) {
       std::exception_ptr exception = std::move(exception_);
@@ -414,7 +413,7 @@ template <class T> Future<T> unwrap_future(Future<Future<T>> future)
  *  auto promise = std::make_shared<simgrid::kernel::Promise<T>>();
  *  auto future = promise->get_future();
  *
- *  simgrid::simix::Timer::set(date, [promise] {
+ *  simgrid::kernel::timer::Timer::set(date, [promise] {
  *    try {
  *      int value = compute_the_value();
  *      if (value < 0)

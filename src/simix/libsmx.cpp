@@ -25,6 +25,10 @@
 
 #include "popping_bodies.cpp"
 
+#include <boost/core/demangle.hpp>
+#include <string>
+#include <typeinfo>
+
 /**
  * @ingroup simix_host_management
  * @brief Waits for the completion of an execution synchro and destroy it.
@@ -60,25 +64,15 @@ bool simcall_execution_test(const simgrid::kernel::activity::ActivityImplPtr& ex
 unsigned int simcall_execution_waitany_for(simgrid::kernel::activity::ExecImpl* execs[], size_t count,
                                            double timeout) // XBT_ATTRIB_DEPRECATED_v331
 {
-  std::vector<simgrid::kernel::activity::ExecImpl*> execsv(execs, execs + count);
+  std::vector<simgrid::kernel::activity::ExecImpl*> execs_vec(execs, execs + count);
   simgrid::kernel::actor::ActorImpl* issuer = simgrid::kernel::actor::ActorImpl::self();
-  simgrid::kernel::actor::ExecutionWaitanySimcall observer{issuer, &execsv, timeout};
+  simgrid::kernel::actor::ExecutionWaitanySimcall observer{issuer, execs_vec, timeout};
   return simgrid::kernel::actor::simcall_blocking(
       [&observer] {
         simgrid::kernel::activity::ExecImpl::wait_any_for(observer.get_issuer(), observer.get_execs(),
                                                           observer.get_timeout());
       },
       &observer);
-}
-
-void simcall_process_join(smx_actor_t process, double timeout) // XBT_ATTRIB_DEPRECATED_v328
-{
-  simgrid::kernel::actor::ActorImpl::self()->join(process, timeout);
-}
-
-void simcall_process_suspend(smx_actor_t process) // XBT_ATTRIB_DEPRECATED_v328
-{
-  process->get_iface()->suspend();
 }
 
 simgrid::kernel::activity::State simcall_process_sleep(double duration) // XBT_ATTRIB_DEPRECATED_v329
@@ -379,9 +373,18 @@ int simcall_mc_random(int min, int max) // XBT_ATTRIB_DEPRECATD_v331
 /* ************************************************************************** */
 
 /** @brief returns a printable string representing a simcall */
-const char* SIMIX_simcall_name(Simcall kind)
+const char* SIMIX_simcall_name(const s_smx_simcall& simcall)
 {
-  return simcall_names[static_cast<int>(kind)];
+  if (simcall.observer_ != nullptr) {
+    static std::string name;
+    name              = boost::core::demangle(typeid(*simcall.observer_).name());
+    const char* cname = name.c_str();
+    if (name.rfind("simgrid::kernel::", 0) == 0)
+      cname += 17; // strip prefix "simgrid::kernel::"
+    return cname;
+  } else {
+    return simcall_names[static_cast<int>(simcall.call_)];
+  }
 }
 
 namespace simgrid {

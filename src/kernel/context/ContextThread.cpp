@@ -7,12 +7,14 @@
 
 #include "simgrid/Exception.hpp"
 #include "src/internal_config.h" /* loads context system definitions */
+#include "src/kernel/EngineImpl.hpp"
 #include "src/simix/smx_private.hpp"
 #include "xbt/function_types.h"
 #include "xbt/xbt_modinter.h" /* prototype of os thread module's init/exit in XBT */
 
 #include <boost/core/demangle.hpp>
 #include <functional>
+#include <typeinfo>
 #include <utility>
 
 XBT_LOG_EXTERNAL_DEFAULT_CATEGORY(simix_context);
@@ -155,7 +157,7 @@ void ThreadContext::suspend()
 void ThreadContext::attach_start()
 {
   // We're breaking the layers here by depending on the upper layer:
-  auto* maestro = static_cast<ThreadContext*>(simix_global->maestro_->context_.get());
+  auto* maestro = static_cast<ThreadContext*>(simix_global->get_maestro()->context_.get());
   maestro->begin_.release();
   xbt_assert(not this->is_maestro());
   this->start();
@@ -166,7 +168,7 @@ void ThreadContext::attach_stop()
   xbt_assert(not this->is_maestro());
   this->yield();
 
-  auto* maestro = static_cast<ThreadContext*>(simix_global->maestro_->context_.get());
+  auto* maestro = static_cast<ThreadContext*>(simix_global->get_maestro()->context_.get());
   maestro->end_.acquire();
 
   Context::set_current(nullptr);
@@ -176,7 +178,8 @@ void ThreadContext::attach_stop()
 
 void SerialThreadContext::run_all()
 {
-  for (smx_actor_t const& actor : simix_global->actors_to_run) {
+  const auto& to_run = EngineImpl::get_instance()->get_actors_to_run();
+  for (smx_actor_t const& actor : to_run) {
     XBT_DEBUG("Handling %p", actor);
     auto* context = static_cast<ThreadContext*>(actor->context_.get());
     context->release();
@@ -201,9 +204,11 @@ void ParallelThreadContext::finalize()
 
 void ParallelThreadContext::run_all()
 {
-  for (smx_actor_t const& actor : simix_global->actors_to_run)
+  const auto& to_release = EngineImpl::get_instance()->get_actors_to_run();
+  for (smx_actor_t const& actor : to_release)
     static_cast<ThreadContext*>(actor->context_.get())->release();
-  for (smx_actor_t const& actor : simix_global->actors_to_run)
+  const auto& to_wait = EngineImpl::get_instance()->get_actors_to_run();
+  for (smx_actor_t const& actor : to_wait)
     static_cast<ThreadContext*>(actor->context_.get())->wait();
 }
 

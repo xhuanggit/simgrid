@@ -10,15 +10,6 @@
 
 XBT_LOG_NEW_DEFAULT_SUBCATEGORY(simix_mailbox, simix, "Mailbox implementation");
 
-static std::unordered_map<std::string, smx_mailbox_t> mailboxes;
-
-void SIMIX_mailbox_exit()
-{
-  for (auto const& elm : mailboxes)
-    delete elm.second;
-  mailboxes.clear();
-}
-
 /******************************************************************************/
 /*                           Rendez-Vous Points                               */
 /******************************************************************************/
@@ -26,29 +17,7 @@ void SIMIX_mailbox_exit()
 namespace simgrid {
 namespace kernel {
 namespace activity {
-/** @brief Returns the mailbox of that name, or nullptr */
-MailboxImpl* MailboxImpl::by_name_or_null(const std::string& name)
-{
-  auto mbox = mailboxes.find(name);
-  if (mbox != mailboxes.end())
-    return mbox->second;
-  else
-    return nullptr;
-}
 
-/** @brief Returns the mailbox of that name, newly created on need */
-MailboxImpl* MailboxImpl::by_name_or_create(const std::string& name)
-{
-  /* two processes may have pushed the same mbox_create simcall at the same time */
-  auto m = mailboxes.find(name);
-  if (m == mailboxes.end()) {
-    auto* mbox = new MailboxImpl(name);
-    XBT_DEBUG("Creating a mailbox at %p with name %s", mbox, name.c_str());
-    mailboxes[name] = mbox;
-    return mbox;
-  } else
-    return m->second;
-}
 /** @brief set the receiver of the mailbox to allow eager sends
  *  @param actor The receiving dude
  */
@@ -124,35 +93,29 @@ CommImplPtr MailboxImpl::find_matching_comm(CommImpl::Type type, bool (*match_fu
                                             void* this_user_data, const CommImplPtr& my_synchro, bool done,
                                             bool remove_matching)
 {
-  void* other_user_data = nullptr;
   auto& comm_queue      = done ? done_comm_queue_ : comm_queue_;
 
-  for (auto it = comm_queue.begin(); it != comm_queue.end(); it++) {
-    const CommImplPtr& comm = *it;
-
-    if (comm->type_ == CommImpl::Type::SEND) {
-      other_user_data = comm->src_data_;
-    } else if (comm->type_ == CommImpl::Type::RECEIVE) {
-      other_user_data = comm->dst_data_;
-    }
-    if (comm->type_ == type && (match_fun == nullptr || match_fun(this_user_data, other_user_data, comm.get())) &&
-        (not comm->match_fun || comm->match_fun(other_user_data, this_user_data, my_synchro.get()))) {
-      XBT_DEBUG("Found a matching communication synchro %p", comm.get());
-#if SIMGRID_HAVE_MC
-      comm->mbox_cpy = comm->get_mailbox();
-#endif
-      comm->set_mailbox(nullptr);
-      CommImplPtr comm_cpy = comm;
-      if (remove_matching)
-        comm_queue.erase(it);
-      return comm_cpy;
-    }
-    XBT_DEBUG("Sorry, communication synchro %p does not match our needs:"
-              " its type is %d but we are looking for a comm of type %d (or maybe the filtering didn't match)",
-              comm.get(), (int)comm->type_, (int)type);
+  auto iter = std::find_if(
+      comm_queue.begin(), comm_queue.end(), [&type, &match_fun, &this_user_data, &my_synchro](const CommImplPtr& comm) {
+        void* other_user_data = (comm->type_ == CommImpl::Type::SEND ? comm->src_data_ : comm->dst_data_);
+        return (comm->type_ == type && (not match_fun || match_fun(this_user_data, other_user_data, comm.get())) &&
+                (not comm->match_fun || comm->match_fun(other_user_data, this_user_data, my_synchro.get())));
+      });
+  if (iter == comm_queue.end()) {
+    XBT_DEBUG("No matching communication synchro found");
+    return nullptr;
   }
-  XBT_DEBUG("No matching communication synchro found");
-  return nullptr;
+
+  const CommImplPtr& comm = *iter;
+  XBT_DEBUG("Found a matching communication synchro %p", comm.get());
+#if SIMGRID_HAVE_MC
+  comm->mbox_cpy = comm->get_mailbox();
+#endif
+  comm->set_mailbox(nullptr);
+  CommImplPtr comm_cpy = comm;
+  if (remove_matching)
+    comm_queue.erase(iter);
+  return comm_cpy;
 }
 } // namespace activity
 } // namespace kernel
