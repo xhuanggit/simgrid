@@ -37,15 +37,11 @@ void TorusZone::create_torus_links(int id, int rank, unsigned int position)
     const s4u::Link* linkup;
     const s4u::Link* linkdown;
     if (get_link_sharing_policy() == s4u::Link::SharingPolicy::SPLITDUPLEX) {
-      linkup = create_link(link_id + "_UP", std::vector<double>{get_link_bandwidth()})
-                   ->set_latency(get_link_latency())
-                   ->seal();
-      linkdown = create_link(link_id + "_DOWN", std::vector<double>{get_link_bandwidth()})
-                     ->set_latency(get_link_latency())
-                     ->seal();
+      linkup   = create_link(link_id + "_UP", {get_link_bandwidth()})->set_latency(get_link_latency())->seal();
+      linkdown = create_link(link_id + "_DOWN", {get_link_bandwidth()})->set_latency(get_link_latency())->seal();
 
     } else {
-      linkup = create_link(link_id, std::vector<double>{get_link_bandwidth()})->set_latency(get_link_latency())->seal();
+      linkup   = create_link(link_id, {get_link_bandwidth()})->set_latency(get_link_latency())->seal();
       linkdown = linkup;
     }
     /*
@@ -91,9 +87,7 @@ void TorusZone::get_local_route(const NetPoint* src, const NetPoint* dst, Route*
   if (src->id() == dst->id() && has_loopback()) {
     resource::LinkImpl* uplink = get_uplink_from(node_pos(src->id()));
 
-    route->link_list_.push_back(uplink);
-    if (lat)
-      *lat += uplink->get_latency();
+    add_link_latency(route->link_list_, uplink, lat);
     return;
   }
 
@@ -121,7 +115,7 @@ void TorusZone::get_local_route(const NetPoint* src, const NetPoint* dst, Route*
    * linkOffset describes the offset where the link we want to use is stored(+1 is added because each node has a link
    * from itself to itself, which can only be the case if src->m_id == dst->m_id -- see above for this special case)
    */
-  int linkOffset = (dsize + 1) * src->id();
+  unsigned int linkOffset = (dsize + 1) * src->id();
 
   bool use_lnk_up = false; // Is this link of the form "cur -> next" or "next -> cur"? false means: next -> cur
   unsigned int current_node = src->id();
@@ -145,7 +139,6 @@ void TorusZone::get_local_route(const NetPoint* src, const NetPoint* dst, Route*
           // HERE: We use *CURRENT* node for calculation (as opposed to next_node)
           linkOffset = node_pos_with_loopback_limiter(current_node) + j;
           use_lnk_up = true;
-          assert(linkOffset >= 0);
         } else { // Route to the left
           if ((current_node / dim_product) % cur_dim == 0)
             next_node = (current_node - dim_product + dim_product * cur_dim);
@@ -155,10 +148,8 @@ void TorusZone::get_local_route(const NetPoint* src, const NetPoint* dst, Route*
           // HERE: We use *next* node for calculation (as opposed to current_node!)
           linkOffset = node_pos_with_loopback_limiter(next_node) + j;
           use_lnk_up = false;
-
-          assert(linkOffset >= 0);
         }
-        XBT_DEBUG("torus_get_route_and_latency - current_node: %u, next_node: %u, linkOffset is %i", current_node,
+        XBT_DEBUG("torus_get_route_and_latency - current_node: %u, next_node: %u, linkOffset is %u", current_node,
                   next_node, linkOffset);
         break;
       }
@@ -176,9 +167,7 @@ void TorusZone::get_local_route(const NetPoint* src, const NetPoint* dst, Route*
     else
       lnk = get_downlink_to(linkOffset);
 
-    route->link_list_.push_back(lnk);
-    if (lat)
-      *lat += lnk->get_latency();
+    add_link_latency(route->link_list_, lnk, lat);
 
     current_node = next_node;
   }

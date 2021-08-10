@@ -190,7 +190,7 @@ bool simcall_HANDLER_comm_test(smx_simcall_t, simgrid::kernel::activity::CommImp
   return comm->test();
 }
 
-int simcall_HANDLER_comm_testany(smx_simcall_t simcall, simgrid::kernel::activity::CommImpl* comms[], size_t count)
+ssize_t simcall_HANDLER_comm_testany(smx_simcall_t simcall, simgrid::kernel::activity::CommImpl* comms[], size_t count)
 {
   std::vector<simgrid::kernel::activity::CommImpl*> comms_vec(comms, comms + count);
   return simgrid::kernel::activity::CommImpl::test_any(simcall->issuer_, comms_vec);
@@ -412,7 +412,7 @@ void CommImpl::wait_for(actor::ActorImpl* issuer, double timeout)
   if (state_ != State::WAITING && state_ != State::RUNNING) {
     finish();
   } else { /* we need a sleep action (even when there is no timeout) to be notified of host failures */
-    resource::Action* sleep = issuer->get_host()->pimpl_cpu->sleep(timeout);
+    resource::Action* sleep = issuer->get_host()->get_cpu()->sleep(timeout);
     sleep->set_activity(this);
 
     if (issuer == src_actor_)
@@ -422,7 +422,7 @@ void CommImpl::wait_for(actor::ActorImpl* issuer, double timeout)
   }
 }
 
-int CommImpl::test_any(const actor::ActorImpl* issuer, const std::vector<CommImpl*>& comms)
+ssize_t CommImpl::test_any(const actor::ActorImpl* issuer, const std::vector<CommImpl*>& comms)
 {
   if (MC_is_active() || MC_record_replay_is_active()) {
     int idx = issuer->simcall_.mc_value_;
@@ -580,7 +580,7 @@ void CommImpl::finish()
       }
       if (not MC_is_active() && not MC_record_replay_is_active()) {
         CommImpl** element = std::find(comms, comms + count, this);
-        int rank           = (element != comms + count) ? element - comms : -1;
+        ssize_t rank       = (element != comms + count) ? element - comms : -1;
         simcall_comm_waitany__set__result(simcall, rank);
       }
     }
@@ -664,7 +664,7 @@ void CommImpl::finish()
         count = simcall_comm_testany__get__count(simcall);
       }
       CommImpl** element = std::find(comms, comms + count, this);
-      int rank           = (element != comms + count) ? element - comms : -1;
+      ssize_t rank       = (element != comms + count) ? element - comms : -1;
       // In order to modify the exception we have to rethrow it:
       try {
         std::rethrow_exception(simcall->issuer_->exception_);

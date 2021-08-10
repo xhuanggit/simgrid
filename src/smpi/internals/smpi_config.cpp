@@ -30,7 +30,6 @@ constexpr bool HAVE_WORKING_MMAP = false;
 constexpr bool HAVE_WORKING_MMAP = true;
 #endif
 
-bool _smpi_options_initialized=false;
 SharedMallocType _smpi_cfg_shared_malloc = SharedMallocType::GLOBAL;
 SmpiPrivStrategies _smpi_cfg_privatization = SmpiPrivStrategies::NONE;
 double _smpi_cfg_host_speed;
@@ -109,7 +108,11 @@ simgrid::config::Flag<std::string> _smpi_cfg_comp_adjustment_file{"smpi/comp-adj
         }
       }
     }};
-    
+
+simgrid::config::Flag<bool> _smpi_cfg_default_errhandler_is_error{
+  "smpi/errors-are-fatal", "Whether MPI errors are fatal or just return. Default is true", true };
+simgrid::config::Flag<bool> _smpi_cfg_pedantic{
+  "smpi/pedantic", "Activate extra checks that may crash slightly incorrect codes which would not crash on actual implementations", true };
 #if HAVE_PAPI
   simgrid::config::Flag<std::string> _smpi_cfg_papi_events_file{"smpi/papi-events",
                                                                 "This switch enables tracking the specified counters with PAPI", ""};
@@ -187,10 +190,22 @@ double smpi_cfg_auto_shared_malloc_thresh(){
   return _smpi_cfg_auto_shared_malloc_thresh;
 }
 
-void smpi_init_options(bool called_by_smpimain)
+// public version declared in smpi.h (without parameter, and with C linkage)
+void smpi_init_options()
 {
+  smpi_init_options_internal(false);
+}
+
+void smpi_init_options_internal(bool called_by_smpi_main)
+{
+  static bool smpi_options_initialized = false;
+  static bool running_with_smpi_main   = false;
+
+  if (called_by_smpi_main)
+    running_with_smpi_main = true;
+
   // return if already called
-  if(_smpi_options_initialized)
+  if (smpi_options_initialized)
     return;
   simgrid::config::declare_flag<bool>("smpi/display-timing", "Whether we should display the timing after simulation.", false);
   simgrid::config::declare_flag<bool>("smpi/keep-temps", "Whether we should keep the generated temporary files.", false);
@@ -215,7 +230,7 @@ void smpi_init_options(bool called_by_smpimain)
 
   simgrid::config::declare_flag<std::string>(
       "smpi/privatization", "How we should privatize global variable at runtime (no, yes, mmap, dlopen).",
-      default_privatization, [called_by_smpimain](const std::string& smpi_privatize_option) {
+      default_privatization, [](const std::string& smpi_privatize_option) {
         if (smpi_privatize_option == "no" || smpi_privatize_option == "0")
           _smpi_cfg_privatization = SmpiPrivStrategies::NONE;
         else if (smpi_privatize_option == "yes" || smpi_privatize_option == "1")
@@ -227,7 +242,7 @@ void smpi_init_options(bool called_by_smpimain)
         else
           xbt_die("Invalid value for smpi/privatization: '%s'", smpi_privatize_option.c_str());
 
-        if (not called_by_smpimain) {
+        if (not running_with_smpi_main) {
           XBT_DEBUG("Running without smpi_main(); disable smpi/privatization.");
           _smpi_cfg_privatization = SmpiPrivStrategies::NONE;
         }
@@ -257,7 +272,7 @@ void smpi_init_options(bool called_by_smpimain)
 
   simgrid::config::declare_flag<bool>("smpi/finalization-barrier", "Do we add a barrier in MPI_Finalize or not", false);
 
-  _smpi_options_initialized=true;
+  smpi_options_initialized = true;
 }
 
 void smpi_check_options()

@@ -130,9 +130,6 @@ void Win::get_group(MPI_Group* group){
 
 MPI_Info Win::info()
 {
-  if (info_ == MPI_INFO_NULL)
-    info_ = new Info();
-  info_->ref();
   return info_;
 }
 
@@ -182,8 +179,7 @@ void Win::set_name(const char* name){
 int Win::fence(int assert)
 {
   XBT_DEBUG("Entering fence");
-  if (opened_ == 0)
-    opened_=1;
+  opened_++;
   if (not (assert & MPI_MODE_NOPRECEDE)) {
     // This is not the first fence => finalize what came before
     bar_->wait();

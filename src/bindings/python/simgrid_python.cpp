@@ -13,9 +13,27 @@
 #pragma GCC diagnostic ignored "-Wunused-value"
 #endif
 
-#include <pybind11/functional.h>
+#ifndef NDEBUG
+/* Many tests are failing after pybind11 commit ad6bf5cd39ca64b4a9bf846b84b11c4c8df1c8e1 "Adding PyGILState_Check() in
+ *  object_api<>::operator(). (#2919)".
+ * See https://github.com/pybind/pybind11/commit/ad6bf5cd39ca64b4a9bf846b84b11c4c8df1c8e1
+ *
+ * The failing tests are mostly those with boost/raw/sysv contexts. As a workaround, define NDEBUG before pybind11
+ * includes.
+ */
+#define NDEBUG
+#define NDEBUG_LOCALLY_DEFINED
+#endif
+
 #include <pybind11/pybind11.h> // Must come before our own stuff
+
+#include <pybind11/functional.h>
 #include <pybind11/stl.h>
+
+#ifdef NDEBUG_LOCALLY_DEFINED
+#undef NDEBUG_LOCALLY_DEFINED
+#undef NDEBUG
+#endif
 
 #if defined(__GNUG__)
 #pragma GCC diagnostic pop
@@ -267,10 +285,14 @@ PYBIND11_MODULE(simgrid, m)
            "Test whether the communication is terminated.")
       .def("wait", &simgrid::s4u::Comm::wait, py::call_guard<GilScopedRelease>(),
            "Block until the completion of that communication.")
-      .def("wait_all", &simgrid::s4u::Comm::wait_all, py::call_guard<GilScopedRelease>(),
-           "Block until the completion of all communications in the list.")
-      .def("wait_any", &simgrid::s4u::Comm::wait_any, py::call_guard<GilScopedRelease>(),
-           "Block until the completion of any communication in the list and return the index of the terminated one.");
+      // use py::overload_cast for wait_all/wait_any, until the overload marked XBT_ATTRIB_DEPRECATED_v332 is removed
+      .def_static("wait_all",
+                  py::overload_cast<const std::vector<simgrid::s4u::CommPtr>&>(&simgrid::s4u::Comm::wait_all),
+                  py::call_guard<GilScopedRelease>(), "Block until the completion of all communications in the list.")
+      .def_static(
+          "wait_any", py::overload_cast<const std::vector<simgrid::s4u::CommPtr>&>(&simgrid::s4u::Comm::wait_any),
+          py::call_guard<GilScopedRelease>(),
+          "Block until the completion of any communication in the list and return the index of the terminated one.");
 
   /* Class Exec */
   py::class_<simgrid::s4u::Exec, simgrid::s4u::ExecPtr>(m, "Exec", "Execution")

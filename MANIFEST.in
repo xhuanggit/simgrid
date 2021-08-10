@@ -181,6 +181,8 @@ include examples/cpp/comm-pingpong/simix-breakpoint.tesh
 include examples/cpp/comm-ready/s4u-comm-ready.cpp
 include examples/cpp/comm-ready/s4u-comm-ready.tesh
 include examples/cpp/comm-ready/s4u-comm-ready_d.xml
+include examples/cpp/comm-serialize/s4u-comm-serialize.cpp
+include examples/cpp/comm-serialize/s4u-comm-serialize.tesh
 include examples/cpp/comm-suspend/s4u-comm-suspend.cpp
 include examples/cpp/comm-suspend/s4u-comm-suspend.tesh
 include examples/cpp/comm-suspend/s4u-comm-suspend_d.xml
@@ -232,6 +234,8 @@ include examples/cpp/exec-async/s4u-exec-async.cpp
 include examples/cpp/exec-async/s4u-exec-async.tesh
 include examples/cpp/exec-basic/s4u-exec-basic.cpp
 include examples/cpp/exec-basic/s4u-exec-basic.tesh
+include examples/cpp/exec-cpu-nonlinear/s4u-exec-cpu-nonlinear.cpp
+include examples/cpp/exec-cpu-nonlinear/s4u-exec-cpu-nonlinear.tesh
 include examples/cpp/exec-dependent/s4u-exec-dependent.cpp
 include examples/cpp/exec-dependent/s4u-exec-dependent.tesh
 include examples/cpp/exec-dvfs/s4u-exec-dvfs.cpp
@@ -250,6 +254,8 @@ include examples/cpp/exec-waitfor/s4u-exec-waitfor.cpp
 include examples/cpp/exec-waitfor/s4u-exec-waitfor.tesh
 include examples/cpp/io-async/s4u-io-async.cpp
 include examples/cpp/io-async/s4u-io-async.tesh
+include examples/cpp/io-degradation/s4u-io-degradation.cpp
+include examples/cpp/io-degradation/s4u-io-degradation.tesh
 include examples/cpp/io-dependent/s4u-io-dependent.cpp
 include examples/cpp/io-dependent/s4u-io-dependent.tesh
 include examples/cpp/io-disk-raw/s4u-io-disk-raw.cpp
@@ -276,6 +282,8 @@ include examples/cpp/mc-failing-assert/s4u-mc-failing-assert.cpp
 include examples/cpp/mc-failing-assert/s4u-mc-failing-assert.tesh
 include examples/cpp/network-factors/s4u-network-factors.cpp
 include examples/cpp/network-factors/s4u-network-factors.tesh
+include examples/cpp/network-nonlinear/s4u-network-nonlinear.cpp
+include examples/cpp/network-nonlinear/s4u-network-nonlinear.tesh
 include examples/cpp/network-ns3-wifi/s4u-network-ns3-wifi.cpp
 include examples/cpp/network-ns3-wifi/s4u-network-ns3-wifi.tesh
 include examples/cpp/network-ns3/3hosts_2links_d.xml
@@ -636,6 +644,8 @@ include examples/smpi/replay_multiple_manual_deploy/workload_compute_consecutive
 include examples/smpi/replay_multiple_manual_deploy/workload_compute_simple
 include examples/smpi/replay_multiple_manual_deploy/workload_mixed2_same_time
 include examples/smpi/replay_multiple_manual_deploy/workload_mixed2_same_time_and_resources
+include examples/smpi/simple-execute/hostfile_griffon
+include examples/smpi/simple-execute/simple-execute-cpp-platf.tesh
 include examples/smpi/simple-execute/simple-execute.c
 include examples/smpi/simple-execute/simple-execute.tesh
 include examples/smpi/smpi_s4u_masterworker/deployment_masterworker_mailbox_smpi.xml
@@ -675,6 +685,8 @@ include teshsuite/mc/random-bug/random-bug.cpp
 include teshsuite/mc/random-bug/random-bug.tesh
 include teshsuite/models/cloud-sharing/cloud-sharing.cpp
 include teshsuite/models/cloud-sharing/cloud-sharing.tesh
+include teshsuite/models/cm02-set-lat-bw/cm02-set-lat-bw.cpp
+include teshsuite/models/cm02-set-lat-bw/cm02-set-lat-bw.tesh
 include teshsuite/models/ptask_L07_usage/ptask_L07_usage.cpp
 include teshsuite/models/ptask_L07_usage/ptask_L07_usage.tesh
 include teshsuite/models/wifi_usage/wifi_usage.cpp
@@ -727,6 +739,8 @@ include teshsuite/s4u/host-on-off-recv/host-on-off-recv.cpp
 include teshsuite/s4u/host-on-off-recv/host-on-off-recv.tesh
 include teshsuite/s4u/host-on-off/host-on-off.cpp
 include teshsuite/s4u/host-on-off/host-on-off.tesh
+include teshsuite/s4u/io-set-bw/io-set-bw.cpp
+include teshsuite/s4u/io-set-bw/io-set-bw.tesh
 include teshsuite/s4u/is-router/is-router.cpp
 include teshsuite/s4u/is-router/is-router.tesh
 include teshsuite/s4u/issue71/issue71.cpp
@@ -763,6 +777,8 @@ include teshsuite/s4u/vm-live-migration/vm-live-migration.cpp
 include teshsuite/s4u/vm-live-migration/vm-live-migration.tesh
 include teshsuite/s4u/vm-suicide/vm-suicide.cpp
 include teshsuite/s4u/vm-suicide/vm-suicide.tesh
+include teshsuite/s4u/wait-all-for/wait-all-for.cpp
+include teshsuite/s4u/wait-all-for/wait-all-for.tesh
 include teshsuite/s4u/wait-any-for/wait-any-for.cpp
 include teshsuite/s4u/wait-any-for/wait-any-for.tesh
 include teshsuite/simdag/availability/availability.c
@@ -821,6 +837,7 @@ include teshsuite/smpi/coll-allreduce/coll-allreduce.tesh
 include teshsuite/smpi/coll-alltoall/clusters.tesh
 include teshsuite/smpi/coll-alltoall/coll-alltoall.c
 include teshsuite/smpi/coll-alltoall/coll-alltoall.tesh
+include teshsuite/smpi/coll-alltoall/griffon.tesh
 include teshsuite/smpi/coll-alltoallv/coll-alltoallv.c
 include teshsuite/smpi/coll-alltoallv/coll-alltoallv.tesh
 include teshsuite/smpi/coll-barrier/coll-barrier.c
@@ -843,6 +860,7 @@ include teshsuite/smpi/hostfile
 include teshsuite/smpi/hostfile_cluster
 include teshsuite/smpi/hostfile_coll
 include teshsuite/smpi/hostfile_empty
+include teshsuite/smpi/hostfile_griffon
 include teshsuite/smpi/hostfile_io
 include teshsuite/smpi/hostfile_mpich
 include teshsuite/smpi/io-all-at/io-all-at.c
@@ -1771,10 +1789,8 @@ include doc/doxygen/module-index.doc
 include doc/doxygen/module-sd.doc
 include doc/doxygen/module-surf.doc
 include doc/doxygen/module-trace.doc
-include doc/doxygen/module-xbt.doc
 include doc/doxygen/outcomes_vizu.doc
 include doc/doxygen/platform.doc
-include doc/doxygen/platform_lua.doc
 include doc/doxygen/uhood.doc
 include doc/doxygen/uhood_arch.doc
 include doc/doxygen/uhood_switch.doc
@@ -1783,7 +1799,6 @@ include docs/README.md
 include docs/bin/extract_logs_hierarchy.pl
 include docs/find-missing.ignore
 include docs/find-missing.py
-include docs/ignored_symbols
 include docs/manpages/smpicc.1
 include docs/manpages/smpicxx.1
 include docs/manpages/smpif90.1
@@ -1801,10 +1816,12 @@ include docs/source/Introduction.rst
 include docs/source/Models.rst
 include docs/source/Outcomes.rst
 include docs/source/Platform.rst
+include docs/source/Platform_cpp.rst
 include docs/source/Platform_examples.rst
 include docs/source/Platform_howtos.rst
 include docs/source/Platform_routing.rst
 include docs/source/Plugins.rst
+include docs/source/Release_Notes.rst
 include docs/source/Start_your_own_project.rst
 include docs/source/The_XBT_toolbox.rst
 include docs/source/Tutorial_Algorithms.rst
@@ -1842,9 +1859,27 @@ include docs/source/img/extlink.svg
 include docs/source/img/graphical-toc.svg
 include docs/source/img/smpi_simgrid_alltoall_pair_16.png
 include docs/source/img/smpi_simgrid_alltoall_ring_16.png
+include docs/source/img/starzone.drawio
+include docs/source/img/starzone.svg
 include docs/source/img/zone_hierarchy.png
+include docs/source/img/zone_tree.drawio
+include docs/source/img/zone_tree.svg
+include docs/source/img/zoom_comm.drawio
+include docs/source/img/zoom_comm.svg
 include docs/source/index.rst
 include docs/source/intl.rst
+include docs/source/tuto_disk/CMakeLists.txt
+include docs/source/tuto_disk/Dockerfile
+include docs/source/tuto_disk/analysis.org
+include docs/source/tuto_disk/analysis.rst
+include docs/source/tuto_disk/fig/edel_read_dhist.png
+include docs/source/tuto_disk/fig/edel_write_dhist.png
+include docs/source/tuto_disk/fig/griffon_deg.png
+include docs/source/tuto_disk/fig/griffon_read_dhist.png
+include docs/source/tuto_disk/fig/griffon_write_dhist.png
+include docs/source/tuto_disk/fig/simgrid_results.png
+include docs/source/tuto_disk/init.el
+include docs/source/tuto_disk/tuto_disk.cpp
 include docs/source/tuto_s4u/deployment1.xml
 include docs/source/tuto_s4u/deployment2.xml
 include docs/source/tuto_s4u/deployment3.xml
@@ -1871,6 +1906,7 @@ include examples/cpp/CMakeLists.txt
 include examples/deprecated/java/CMakeLists.txt
 include examples/deprecated/msg/mc/CMakeLists.txt
 include examples/deprecated/simdag/CMakeLists.txt
+include examples/platforms/CMakeLists.txt
 include examples/platforms/bypassRoute.xml
 include examples/platforms/bypassZoneRoute.xml
 include examples/platforms/cloud.xml
@@ -1894,6 +1930,7 @@ include examples/platforms/energy_cluster.xml
 include examples/platforms/energy_platform.xml
 include examples/platforms/faulty_host.xml
 include examples/platforms/g5k.xml
+include examples/platforms/griffon.cpp
 include examples/platforms/griffon.xml
 include examples/platforms/hosts_with_disks.xml
 include examples/platforms/meta_cluster.xml
@@ -1919,6 +1956,7 @@ include examples/platforms/profiles/trace_A_failure.txt
 include examples/platforms/profiles/trace_B.txt
 include examples/platforms/prop.xml
 include examples/platforms/ptask_L07.xml
+include examples/platforms/routing_cluster.cpp
 include examples/platforms/routing_cluster.lua
 include examples/platforms/routing_cluster.xml
 include examples/platforms/routing_none.xml
@@ -1955,7 +1993,6 @@ include examples/python/comm-waitall/comm-waitall_d.xml
 include examples/python/comm-waitany/comm-waitany_d.xml
 include examples/smpi/CMakeLists.txt
 include examples/smpi/NAS/CMakeLists.txt
-include examples/smpi/mc/non_deterministic.tesh
 include examples/smpi/mc/only_send_deterministic.tesh
 include examples/smpi/replay_multiple/CMakeLists.txt
 include examples/smpi/replay_multiple_manual_deploy/CMakeLists.txt
@@ -2233,6 +2270,7 @@ include src/kernel/routing/FullZone.cpp
 include src/kernel/routing/FullZone_test.cpp
 include src/kernel/routing/NetPoint.cpp
 include src/kernel/routing/NetZoneImpl.cpp
+include src/kernel/routing/NetZone_test.hpp
 include src/kernel/routing/RoutedZone.cpp
 include src/kernel/routing/StarZone.cpp
 include src/kernel/routing/StarZone_test.cpp
@@ -2383,7 +2421,6 @@ include src/simix/popping_private.hpp
 include src/simix/simcalls.in
 include src/simix/simcalls.py
 include src/simix/smx_context.cpp
-include src/simix/smx_deployment.cpp
 include src/simix/smx_global.cpp
 include src/simix/smx_private.hpp
 include src/smpi/bindings/smpi_f77.cpp
@@ -2573,6 +2610,12 @@ include src/smpi/smpirun.in
 include src/smpi/smpitools.sh
 include src/surf/HostImpl.cpp
 include src/surf/HostImpl.hpp
+include src/surf/LinkImpl.cpp
+include src/surf/LinkImpl.hpp
+include src/surf/LinkImplIntf.hpp
+include src/surf/SplitDuplexLinkImpl.cpp
+include src/surf/SplitDuplexLinkImpl.hpp
+include src/surf/SplitDuplexLinkImpl_test.cpp
 include src/surf/cpu_cas01.cpp
 include src/surf/cpu_cas01.hpp
 include src/surf/cpu_interface.cpp

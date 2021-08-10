@@ -108,21 +108,17 @@ const std::vector<simgrid::kernel::resource::Model*>& Engine::get_all_models() c
  */
 void Engine::load_platform(const std::string& platf) const
 {
-  double start = xbt_os_time();
-  parse_platform_file(platf);
-
-  double end = xbt_os_time();
-  XBT_DEBUG("PARSE TIME: %g", (end - start));
+  pimpl->load_platform(platf);
 }
 
-void Engine::register_function(const std::string& name, int (*code)(int, char**)) // XBT_ATTRIB_DEPRECATED_v329
+void Engine::register_function(const std::string& name, int (*code)(int, char**)) // XBT_ATTRIB_DEPRECATED_v330
 {
   kernel::actor::ActorCodeFactory code_factory = [code](std::vector<std::string> args) {
     return xbt::wrap_main(code, std::move(args));
   };
   register_function(name, code_factory);
 }
-void Engine::register_default(int (*code)(int, char**)) // XBT_ATTRIB_DEPRECATED_v329
+void Engine::register_default(int (*code)(int, char**)) // XBT_ATTRIB_DEPRECATED_v330
 {
   register_default([code](std::vector<std::string> args) { return xbt::wrap_main(code, std::move(args)); });
 }
@@ -236,6 +232,14 @@ Link* Engine::link_by_name(const std::string& name) const
 {
   auto link = pimpl->links_.find(name);
   if (link == pimpl->links_.end())
+    throw std::invalid_argument(std::string("Link not found: ") + name);
+  return link->second->get_iface();
+}
+
+SplitDuplexLink* Engine::split_duplex_link_by_name(const std::string& name) const
+{
+  auto link = pimpl->split_duplex_links_.find(name);
+  if (link == pimpl->split_duplex_links_.end())
     throw std::invalid_argument(std::string("Link not found: ") + name);
   return link->second->get_iface();
 }

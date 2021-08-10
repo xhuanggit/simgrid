@@ -65,8 +65,10 @@ void Comm::destroy(Comm* comm)
     Comm::destroy(smpi_process()->comm_world());
     return;
   }
-  if(comm != MPI_COMM_WORLD)
+  if (comm != MPI_COMM_WORLD && not comm->deleted()) {
+    comm->cleanup_attr<Comm>();
     comm->mark_as_deleted();
+  }
   Comm::unref(comm);
 }
 
@@ -181,12 +183,12 @@ void Comm::get_name(char* name, int* len) const
 std::string Comm::name() const
 {
   int size;
-  char name[MPI_MAX_NAME_STRING+1];
-  this->get_name(name, &size);
+  std::array<char, MPI_MAX_NAME_STRING + 1> name;
+  this->get_name(name.data(), &size);
   if (name[0]=='\0')
     return std::string("MPI_Comm");
   else
-    return std::string(name);
+    return std::string(name.data());
 }
 
 
@@ -474,7 +476,7 @@ void Comm::init_smp(){
   int my_local_size=comm_intra->size();
   if(comm_intra->rank()==0) {
     int is_uniform       = 1;
-    int* non_uniform_map = xbt_new0(int,leader_group_size);
+    auto* non_uniform_map = xbt_new0(int, leader_group_size);
     allgather__ring(&my_local_size, 1, MPI_INT,
         non_uniform_map, 1, MPI_INT, leader_comm);
     for(i=0; i < leader_group_size; i++) {
@@ -562,9 +564,6 @@ void Comm::finish_rma_calls() const
 
 MPI_Info Comm::info()
 {
-  if (info_ == MPI_INFO_NULL)
-    info_ = new Info();
-  info_->ref();
   return info_;
 }
 
@@ -584,9 +583,12 @@ MPI_Errhandler Comm::errhandler()
       errhandler_->ref();
     return errhandler_;
   } else {
-    if(errhandlers_==nullptr)
-      return MPI_ERRORS_ARE_FATAL;
-    else {
+    if(errhandlers_==nullptr){
+      if (_smpi_cfg_default_errhandler_is_error)
+        return MPI_ERRORS_ARE_FATAL;
+      else
+        return MPI_ERRORS_RETURN;
+    } else {
       if(errhandlers_[this->rank()] != MPI_ERRHANDLER_NULL)
         errhandlers_[this->rank()]->ref();
       return errhandlers_[this->rank()];

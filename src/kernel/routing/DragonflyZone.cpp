@@ -166,7 +166,7 @@ void DragonflyZone::generate_routers(const s4u::ClusterCallbacks& set_callbacks)
     return limiter;
   };
 
-  routers_.reserve(num_groups_ * num_chassis_per_group_ * num_blades_per_chassis_);
+  routers_.reserve(static_cast<size_t>(num_groups_) * num_chassis_per_group_ * num_blades_per_chassis_);
   for (unsigned int i = 0; i < num_groups_; i++) {
     for (unsigned int j = 0; j < num_chassis_per_group_; j++) {
       for (unsigned int k = 0; k < num_blades_per_chassis_; k++) {
@@ -183,19 +183,14 @@ void DragonflyZone::generate_link(const std::string& id, int numlinks, resource:
   *linkup   = nullptr;
   *linkdown = nullptr;
   if (get_link_sharing_policy() == s4u::Link::SharingPolicy::SPLITDUPLEX) {
-    *linkup = create_link(id + "_UP", std::vector<double>{get_link_bandwidth() * numlinks})
-                  ->set_latency(get_link_latency())
-                  ->seal()
-                  ->get_impl();
-    *linkdown = create_link(id + "_DOWN", std::vector<double>{get_link_bandwidth() * numlinks})
+    *linkup =
+        create_link(id + "_UP", {get_link_bandwidth() * numlinks})->set_latency(get_link_latency())->seal()->get_impl();
+    *linkdown = create_link(id + "_DOWN", {get_link_bandwidth() * numlinks})
                     ->set_latency(get_link_latency())
                     ->seal()
                     ->get_impl();
   } else {
-    *linkup = create_link(id, std::vector<double>{get_link_bandwidth() * numlinks})
-                  ->set_latency(get_link_latency())
-                  ->seal()
-                  ->get_impl();
+    *linkup   = create_link(id, {get_link_bandwidth() * numlinks})->set_latency(get_link_latency())->seal()->get_impl();
     *linkdown = *linkup;
   }
 }
@@ -211,7 +206,7 @@ void DragonflyZone::generate_links()
   // Links from routers to their local nodes.
   for (unsigned int i = 0; i < numRouters; i++) {
     // allocate structures
-    routers_[i].my_nodes_.resize(num_links_per_link_ * num_nodes_per_blade_);
+    routers_[i].my_nodes_.resize(static_cast<size_t>(num_links_per_link_) * num_nodes_per_blade_);
     routers_[i].green_links_.resize(num_blades_per_chassis_);
     routers_[i].black_links_.resize(num_chassis_per_group_);
 
@@ -295,9 +290,7 @@ void DragonflyZone::get_local_route(const NetPoint* src, const NetPoint* dst, Ro
   if ((src->id() == dst->id()) && has_loopback()) {
     resource::LinkImpl* uplink = get_uplink_from(node_pos(src->id()));
 
-    route->link_list_.push_back(uplink);
-    if (latency)
-      *latency += uplink->get_latency();
+    add_link_latency(route->link_list_, uplink, latency);
     return;
   }
 
@@ -319,9 +312,8 @@ void DragonflyZone::get_local_route(const NetPoint* src, const NetPoint* dst, Ro
   }
 
   // node->router local link
-  route->link_list_.push_back(myRouter->my_nodes_[myCoords.node * num_links_per_link_]);
-  if (latency)
-    *latency += myRouter->my_nodes_[myCoords.node * num_links_per_link_]->get_latency();
+  add_link_latency(route->link_list_, myRouter->my_nodes_[static_cast<size_t>(myCoords.node) * num_links_per_link_],
+                   latency);
 
   if (targetRouter != myRouter) {
     // are we on a different group ?
@@ -331,9 +323,7 @@ void DragonflyZone::get_local_route(const NetPoint* src, const NetPoint* dst, Ro
         if (currentRouter->limiter_)
           route->link_list_.push_back(currentRouter->limiter_);
         // go to the nth router in our chassis
-        route->link_list_.push_back(currentRouter->green_links_[targetCoords.group]);
-        if (latency)
-          *latency += currentRouter->green_links_[targetCoords.group]->get_latency();
+        add_link_latency(route->link_list_, currentRouter->green_links_[targetCoords.group], latency);
         currentRouter = &routers_[myCoords.group * (num_chassis_per_group_ * num_blades_per_chassis_) +
                                   myCoords.chassis * num_blades_per_chassis_ + targetCoords.group];
       }
@@ -342,19 +332,15 @@ void DragonflyZone::get_local_route(const NetPoint* src, const NetPoint* dst, Ro
         // go to the first chassis of our group
         if (currentRouter->limiter_)
           route->link_list_.push_back(currentRouter->limiter_);
-        route->link_list_.push_back(currentRouter->black_links_[0]);
-        if (latency)
-          *latency += currentRouter->black_links_[0]->get_latency();
+        add_link_latency(route->link_list_, currentRouter->black_links_[0], latency);
         currentRouter =
             &routers_[myCoords.group * (num_chassis_per_group_ * num_blades_per_chassis_) + targetCoords.group];
       }
 
       // go to destination group - the only optical hop
-      route->link_list_.push_back(currentRouter->blue_link_);
+      add_link_latency(route->link_list_, currentRouter->blue_link_, latency);
       if (currentRouter->limiter_)
         route->link_list_.push_back(currentRouter->limiter_);
-      if (latency)
-        *latency += currentRouter->blue_link_->get_latency();
       currentRouter =
           &routers_[targetCoords.group * (num_chassis_per_group_ * num_blades_per_chassis_) + myCoords.group];
     }
@@ -363,9 +349,7 @@ void DragonflyZone::get_local_route(const NetPoint* src, const NetPoint* dst, Ro
     if (targetRouter->blade_ != currentRouter->blade_) {
       if (currentRouter->limiter_)
         route->link_list_.push_back(currentRouter->limiter_);
-      route->link_list_.push_back(currentRouter->green_links_[targetCoords.blade]);
-      if (latency)
-        *latency += currentRouter->green_links_[targetCoords.blade]->get_latency();
+      add_link_latency(route->link_list_, currentRouter->green_links_[targetCoords.blade], latency);
       currentRouter =
           &routers_[targetCoords.group * (num_chassis_per_group_ * num_blades_per_chassis_) + targetCoords.blade];
     }
@@ -374,21 +358,15 @@ void DragonflyZone::get_local_route(const NetPoint* src, const NetPoint* dst, Ro
     if (targetRouter->chassis_ != currentRouter->chassis_) {
       if (currentRouter->limiter_)
         route->link_list_.push_back(currentRouter->limiter_);
-      route->link_list_.push_back(currentRouter->black_links_[targetCoords.chassis]);
-      if (latency)
-        *latency += currentRouter->black_links_[targetCoords.chassis]->get_latency();
+      add_link_latency(route->link_list_, currentRouter->black_links_[targetCoords.chassis], latency);
     }
   }
 
   // router->node local link
   if (targetRouter->limiter_)
     route->link_list_.push_back(targetRouter->limiter_);
-  route->link_list_.push_back(
-      targetRouter->my_nodes_[targetCoords.node * num_links_per_link_ + num_links_per_link_ - 1]);
-
-  if (latency)
-    *latency +=
-        targetRouter->my_nodes_[targetCoords.node * num_links_per_link_ + num_links_per_link_ - 1]->get_latency();
+  add_link_latency(route->link_list_,
+                   targetRouter->my_nodes_[targetCoords.node * num_links_per_link_ + num_links_per_link_ - 1], latency);
 
   if (has_limiter()) { // limiter for receiver
     route->link_list_.push_back(get_downlink_to(node_pos_with_loopback(dst->id())));
